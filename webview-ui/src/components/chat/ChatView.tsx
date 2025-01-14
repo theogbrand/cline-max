@@ -873,7 +873,6 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 					setPlanValue(plan)
 				}}
 				readonly={textAreaDisabled}
-				messages={messages}
 			/>
 			<ChatTextArea
 				ref={textAreaRef}

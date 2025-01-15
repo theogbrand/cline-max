@@ -10,28 +10,41 @@ interface PlanEditorProps {
 	readonly?: boolean
 }
 
+type Message = {
+	text: string
+	role: "user" | "assistant"
+	timestamp?: number
+}
+
 const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => {
+	const [messageHistory, setMessageHistory] = useState<Message[]>([])
 	const [localPlan, setLocalPlan] = useState(plan)
-	const [planResponse, setPlanResponse] = useState("")
 	const [isGenerating, setIsGenerating] = useState(false)
 
 	useEffect(() => {
-		setLocalPlan(plan)
-	}, [plan])
+		if (!localPlan) {
+			setLocalPlan(plan)
+		}
+	}, [plan, localPlan])
 
 	useEffect(() => {
 		const handleMessage = (event: MessageEvent<{ type: string; text?: string }>) => {
 			const message = event.data
 			if (message.type === "planResponse") {
-				setPlanResponse(message.text ?? "")
+				setMessageHistory((prev) => [
+					...prev,
+					{
+						text: message.text ?? "",
+						role: "assistant",
+						timestamp: Date.now(),
+					},
+				])
 				setIsGenerating(false)
-				setLocalPlan("")
-				onUpdate("")
 			}
 		}
 		window.addEventListener("message", handleMessage)
 		return () => window.removeEventListener("message", handleMessage)
-	}, [onUpdate])
+	}, [])
 
 	const handleOverviewChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
 		const newValue = e.target.value
@@ -42,11 +55,40 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => 
 	const handleSubmit = useCallback(() => {
 		if (!localPlan.trim()) return
 		setIsGenerating(true)
+		
+		// Add user message to history before sending
+		setMessageHistory((prev) => [
+			...prev,
+			{
+				text: localPlan.trim(),
+				role: "user",
+				timestamp: Date.now(),
+			},
+		])
+
+		// Consolidate message history into a single text block
+		const consolidatedText = [
+			// Add current plan as the latest user message
+			...messageHistory.map(msg =>
+				`${msg.role.toUpperCase()}: ${msg.text}`
+			),
+			// Add the current plan text
+			`USER: ${localPlan.trim()}`
+		].join("\n\n");
+
+		// Format as a single text block that matches Cline's expected format
 		vscode.postMessage({
 			type: "generatePlan",
-			text: localPlan,
+			text: JSON.stringify({
+				messages: [
+					{
+						type: "text",
+						text: `<task>\n${consolidatedText}\n</task>`
+					}
+				]
+			})
 		})
-	}, [localPlan])
+	}, [localPlan, messageHistory])
 
 	return (
 		<Container>
@@ -54,13 +96,25 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => 
 				<h2>Start Planning</h2>
 			</Header>
 
-			{planResponse && (
+			{messageHistory.length > 0 && (
 				<ResponseSection>
 					<ResponseHeader>
-						<h3>Generated Plan</h3>
+						<h3>Plan Discussion</h3>
 					</ResponseHeader>
 					<ResponseContent>
-						<MarkdownBlock markdown={planResponse} />
+						{messageHistory.map((msg, idx) => (
+							<div key={idx} style={{ marginBottom: 16, opacity: msg.role === "user" ? 0.8 : 1 }}>
+								<div style={{
+									fontWeight: 600,
+									fontSize: "0.9em",
+									marginBottom: 4,
+									color: "var(--vscode-descriptionForeground)"
+								}}>
+									{msg.role === "user" ? "You:" : "Assistant:"}
+								</div>
+								<MarkdownBlock markdown={msg.text} />
+							</div>
+						))}
 					</ResponseContent>
 				</ResponseSection>
 			)}
@@ -72,14 +126,14 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => 
 					onChange={handleOverviewChange}
 					rows={8}
 					readOnly={readonly || isGenerating}
-					placeholder="Draft your plan here"
+					placeholder={messageHistory.length > 0 ? "Continue the discussion..." : "Draft your plan here"}
 				/>
 			</Section>
 
 			{!readonly && (
 				<Actions>
 					<VSCodeButton appearance="primary" onClick={handleSubmit} disabled={isGenerating || !localPlan.trim()}>
-						{isGenerating ? "Generating..." : "Generate Plan"}
+						{isGenerating ? "Generating..." : messageHistory.length > 0 ? "Continue Plan" : "Generate Plan"}
 					</VSCodeButton>
 				</Actions>
 			)}

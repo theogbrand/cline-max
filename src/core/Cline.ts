@@ -3165,12 +3165,26 @@ export class Cline {
 	}
 
 	async generatePlan(planText: string): Promise<string> {
-		const prompt = `Please format your response in markdown with appropriate headers and bullet points.
+		// Parse the messages array from the JSON string
+		const { messages } = JSON.parse(planText);
+		
+		// Simple system prompt for plan generation
+		const systemPrompt = "You are a helpful AI assistant that helps users plan and break down tasks. Analyze the user's input and provide clear, actionable steps and suggestions.";
+		
+		// Format messages for API with proper typing
+		const formattedMessages: Anthropic.MessageParam[] = [
+			{
+				role: "user" as const,
+				content: messages[0].text // This contains the <task> wrapped text
+			}
+		];
 
-${planText}`
-
+		// Use the formatted messages with createMessage
 		let result = ""
-		for await (const chunk of this.api.createMessage(prompt, [])) {
+		for await (const chunk of this.api.createMessage(
+			systemPrompt,
+			formattedMessages
+		)) {
 			if (chunk.type === "text") {
 				result += chunk.text
 			}

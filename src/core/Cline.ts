@@ -3170,19 +3170,15 @@ export class Cline {
 		const userTask = messages[0].text; // This contains the <task> wrapped text
 
 		// Define metaprompts inline for now
-		const metaprompt1 = `Given a task or project description, analyze it to identify key components, dependencies, and potential challenges. Break down the task into logical steps, considering technical requirements and implementation details. Focus on creating a structured outline that will serve as a foundation for detailed planning.
-
-Task to analyze:
+		const metaprompt1 = `Repeat the user's input twice:
 {input}`;
 
-		const metaprompt2 = `Based on the initial analysis, develop a comprehensive implementation plan. Transform the structured outline into specific, actionable steps with technical details, potential gotchas, and implementation suggestions. Consider edge cases, error handling, and best practices.
-
-Initial analysis:
+		const metaprompt2 = `Repeat the user's input twice:
 {input}`;
 
 		// System prompts for each stage
-		const systemPrompt1 = "You are an expert system architect focused on analyzing tasks and breaking them down into structured components. Your goal is to create a clear, logical outline of the task's requirements and challenges.";
-		const systemPrompt2 = "You are an expert technical planner focused on converting high-level analysis into detailed, actionable implementation steps. Your goal is to create a comprehensive plan that addresses all technical aspects and potential challenges.";
+		const systemPrompt1 = "You are a helpful assistant.";
+		const systemPrompt2 = "You are a helpful assistant.";
 
 		// First API call - Initial Analysis
 		const firstPrompt = metaprompt1.replace('{input}', userTask);

@@ -210,6 +210,8 @@ const Container = styled.div`
 	display: flex;
 	flex-direction: column;
 	gap: 16px;
+	height: 100vh;
+	box-sizing: border-box;
 
 	@keyframes blink {
 		0%, 100% { border-color: transparent; }
@@ -291,6 +293,10 @@ const ResponseSection = styled.div`
 	border-radius: 4px;
 	overflow: hidden;
 	margin-bottom: 16px;
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
 `
 
 const ResponseHeader = styled.div`
@@ -309,7 +315,7 @@ const ResponseContent = styled.div`
 	padding: 12px;
 	background: var(--vscode-editor-background);
 	color: var(--vscode-editor-foreground);
-	max-height: 400px;
+	flex: 1;
 	overflow-y: auto;
 	overflow-x: hidden;
 `

@@ -880,15 +880,17 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 				</>
 			)}
 			{showPlanEditor && (
-				<PlanEditor
-					plan={planValue}
-					onUpdate={(plan) => {
-						setPlanValue(plan)
-					}}
-					readonly={textAreaDisabled}
-					messageHistory={planMessages}
-					onMessageHistoryUpdate={setPlanMessages}
-				/>
+				<div style={{ flex: "0 0 auto", maxHeight: "50vh", overflow: "auto" }}>
+					<PlanEditor
+						plan={planValue}
+						onUpdate={(plan) => {
+							setPlanValue(plan)
+						}}
+						readonly={textAreaDisabled}
+						messageHistory={planMessages}
+						onMessageHistoryUpdate={setPlanMessages}
+					/>
+				</div>
 			)}
 			<ChatTextArea
 				ref={textAreaRef}

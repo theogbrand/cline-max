@@ -16,7 +16,7 @@ import { combineApiRequests } from "../../../../src/shared/combineApiRequests"
 import { combineCommandSequences } from "../../../../src/shared/combineCommandSequences"
 import { getApiMetrics } from "../../../../src/shared/getApiMetrics"
 import { useExtensionState } from "../../context/ExtensionStateContext"
-import PlanEditor from "../architect/PlanEditor"
+import PlanEditor, { Message } from "../architect/PlanEditor"
 import { vscode } from "../../utils/vscode"
 import HistoryPreview from "../history/HistoryPreview"
 import { normalizeApiConfiguration } from "../settings/ApiOptions"
@@ -48,6 +48,7 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 	const [inputValue, setInputValue] = useState("")
 	const [planValue, setPlanValue] = useState("")
 	const [showPlanEditor, setShowPlanEditor] = useState(true)
+	const [planMessages, setPlanMessages] = useState<Message[]>([])
 	const textAreaRef = useRef<HTMLTextAreaElement>(null)
 	const [textAreaDisabled, setTextAreaDisabled] = useState(false)
 	const [selectedImages, setSelectedImages] = useState<string[]>([])
@@ -885,6 +886,8 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 						setPlanValue(plan)
 					}}
 					readonly={textAreaDisabled}
+					messageHistory={planMessages}
+					onMessageHistoryUpdate={setPlanMessages}
 				/>
 			)}
 			<ChatTextArea

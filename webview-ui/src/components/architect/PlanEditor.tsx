@@ -4,21 +4,28 @@ import styled from "styled-components"
 import { vscode } from "../../utils/vscode"
 import MarkdownBlock from "../common/MarkdownBlock"
 
+export type Message = {
+	text: string
+	role: "user" | "assistant"
+	timestamp?: number
+	partial?: boolean
+}
+
 interface PlanEditorProps {
 	plan: string
 	onUpdate: (plan: string) => void
 	readonly?: boolean
+	messageHistory: Message[]
+	onMessageHistoryUpdate: (updater: (prevMessages: Message[]) => Message[]) => void
 }
 
-type Message = {
-	text: string
-	role: "user" | "assistant"
-	timestamp?: number
-	partial?: boolean // Added to support streaming
-}
-
-const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => {
-	const [messageHistory, setMessageHistory] = useState<Message[]>([])
+const PlanEditor: React.FC<PlanEditorProps> = ({
+	plan,
+	onUpdate,
+	readonly,
+	messageHistory,
+	onMessageHistoryUpdate
+}) => {
 	const [localPlan, setLocalPlan] = useState(plan)
 	const [isGenerating, setIsGenerating] = useState(false)
 
@@ -33,13 +40,13 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => 
 			const message = event.data
 			
 			if (message.type === "planResponse") {
-				setMessageHistory((prev) => {
-					const lastMessage = prev[prev.length - 1]
+				onMessageHistoryUpdate((prevMessages) => {
+					const lastMessage = prevMessages[prevMessages.length - 1]
 					
 					// If we have a last message that's from assistant, update it
 					if (lastMessage?.role === "assistant") {
-						const updatedMessages = [...prev]
-						updatedMessages[prev.length - 1] = {
+						const updatedMessages = [...prevMessages]
+						updatedMessages[prevMessages.length - 1] = {
 							...lastMessage,
 							text: message.text || "",
 							partial: message.partial
@@ -48,7 +55,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => 
 					}
 					
 					// Otherwise create a new message
-					return [...prev, {
+					return [...prevMessages, {
 						text: message.text || "",
 						role: "assistant",
 						timestamp: Date.now(),
@@ -77,8 +84,8 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => 
 		setIsGenerating(true)
 		
 		// Add user message to history before sending
-		setMessageHistory((prev) => [
-			...prev,
+		onMessageHistoryUpdate((prevMessages: Message[]) => [
+			...prevMessages,
 			{
 				text: localPlan.trim(),
 				role: "user",

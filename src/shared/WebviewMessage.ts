@@ -29,7 +29,9 @@ export interface WebviewMessage {
 		| "checkpointDiff"
 		| "checkpointRestore"
 		| "taskCompletionViewChanges"
+		| "generatePlan"
 	text?: string
+	plan?: string
 	askResponse?: ClineAskResponse
 	apiConfiguration?: ApiConfiguration
 	images?: string[]

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
 import styled from "styled-components"
 import { vscode } from "../../utils/vscode"
+import MarkdownBlock from "../common/MarkdownBlock"
 
 interface PlanEditorProps {
 	plan: string
@@ -11,10 +12,26 @@ interface PlanEditorProps {
 
 const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => {
 	const [localPlan, setLocalPlan] = useState(plan)
+	const [planResponse, setPlanResponse] = useState("")
+	const [isGenerating, setIsGenerating] = useState(false)
 
 	useEffect(() => {
 		setLocalPlan(plan)
 	}, [plan])
+
+	useEffect(() => {
+		const handleMessage = (event: MessageEvent<{ type: string; text?: string }>) => {
+			const message = event.data
+			if (message.type === "planResponse") {
+				setPlanResponse(message.text ?? "")
+				setIsGenerating(false)
+				setLocalPlan("")
+				onUpdate("")
+			}
+		}
+		window.addEventListener("message", handleMessage)
+		return () => window.removeEventListener("message", handleMessage)
+	}, [onUpdate])
 
 	const handleOverviewChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
 		const newValue = e.target.value
@@ -22,13 +39,14 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => 
 		onUpdate(newValue)
 	}
 
-	const handleSubmit = () => {
+	const handleSubmit = useCallback(() => {
+		if (!localPlan.trim()) return
+		setIsGenerating(true)
 		vscode.postMessage({
-			type: "askResponse",
-			askResponse: "messageResponse",
+			type: "generatePlan",
 			text: localPlan,
 		})
-	}
+	}, [localPlan])
 
 	return (
 		<Container>
@@ -36,21 +54,32 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => 
 				<h2>Start Planning</h2>
 			</Header>
 
+			{planResponse && (
+				<ResponseSection>
+					<ResponseHeader>
+						<h3>Generated Plan</h3>
+					</ResponseHeader>
+					<ResponseContent>
+						<MarkdownBlock markdown={planResponse} />
+					</ResponseContent>
+				</ResponseSection>
+			)}
+
 			<Section>
-				<label>Plan</label>
+				<label>Planner</label>
 				<StyledTextArea
 					value={localPlan}
 					onChange={handleOverviewChange}
 					rows={8}
-					readOnly={readonly}
-					placeholder="Start writing plan..."
+					readOnly={readonly || isGenerating}
+					placeholder="Draft your plan here"
 				/>
 			</Section>
 
 			{!readonly && (
 				<Actions>
-					<VSCodeButton appearance="primary" onClick={handleSubmit}>
-						Submit Plan
+					<VSCodeButton appearance="primary" onClick={handleSubmit} disabled={isGenerating || !localPlan.trim()}>
+						{isGenerating ? "Generating..." : "Generate Plan"}
 					</VSCodeButton>
 				</Actions>
 			)}
@@ -132,6 +161,34 @@ const Actions = styled.div`
 	justify-content: flex-end;
 	gap: 8px;
 	margin-top: 8px;
+`
+
+const ResponseSection = styled.div`
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 4px;
+	overflow: hidden;
+	margin-bottom: 16px;
+`
+
+const ResponseHeader = styled.div`
+	background: var(--vscode-editor-background);
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--vscode-input-border);
+
+	h3 {
+		margin: 0;
+		font-size: 14px;
+		color: var(--vscode-editor-foreground);
+	}
+`
+
+const ResponseContent = styled.div`
+	padding: 12px;
+	background: var(--vscode-editor-background);
+	color: var(--vscode-editor-foreground);
+	max-height: 400px;
+	overflow-y: auto;
+	overflow-x: hidden;
 `
 
 export default PlanEditor

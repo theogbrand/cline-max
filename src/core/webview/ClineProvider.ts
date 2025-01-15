@@ -544,6 +544,44 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 						}
 						break
 					}
+					case "generatePlan": {
+						try {
+							// Create a new Cline instance or use existing one
+							const { apiConfiguration, customInstructions, autoApprovalSettings } = await this.getState()
+							
+							// You can either:
+							// 1. Use existing Cline instance if available
+							if (this.cline) {
+								const response = await this.cline.generatePlan(message.text || "")
+								await this.postMessageToWebview({
+									type: "planResponse",
+									text: response
+								})
+							} else {
+								// 2. Or create a temporary Cline instance just for plan generation
+								const tempCline = new Cline(
+									this,
+									apiConfiguration,
+									autoApprovalSettings,
+									customInstructions,
+									"Generate plan",
+									undefined,
+									undefined
+								)
+								const response = await tempCline.generatePlan(message.text || "")
+								await this.postMessageToWebview({
+									type: "planResponse",
+									text: response
+								})
+							}
+						} catch (error) {
+							await this.postMessageToWebview({
+								type: "planResponse",
+								text: `Error generating plan: ${error.message}`
+							})
+						}
+						break
+					}
 					// Add more switch case statements here as more webview message commands
 					// are created within the webview context (i.e. inside media/main.js)
 				}

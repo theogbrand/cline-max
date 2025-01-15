@@ -3163,4 +3163,18 @@ export class Cline {
 
 		return `<environment_details>\n${details.trim()}\n</environment_details>`
 	}
+
+	async generatePlan(planText: string): Promise<string> {
+		const prompt = `Please format your response in markdown with appropriate headers and bullet points.
+
+${planText}`
+
+		let result = ""
+		for await (const chunk of this.api.createMessage(prompt, [])) {
+			if (chunk.type === "text") {
+				result += chunk.text
+			}
+		}
+		return result
+	}
 }

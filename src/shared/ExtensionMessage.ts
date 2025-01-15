@@ -20,6 +20,7 @@ export interface ExtensionMessage {
 		| "openRouterModels"
 		| "mcpServers"
 		| "relinquishControl"
+		| "planResponse"
 	text?: string
 	action?: "chatButtonClicked" | "mcpButtonClicked" | "settingsButtonClicked" | "historyButtonClicked" | "didBecomeVisible"
 	invoke?: "sendMessage" | "primaryButtonClick" | "secondaryButtonClick"

@@ -51,7 +51,7 @@
 				{
 					"id": "claude-dev-ActivityBar",
 					"title": "Cline",
-					"icon": "$(robot)"
+					"icon": "$(flame)"
 				}
 			]
 		},

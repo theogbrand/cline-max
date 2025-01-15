@@ -760,7 +760,7 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 						<h2>Let's build.</h2>
 						<p>
 							Start with a task or describe your project in the Planner section. Rift on the plan until you are
-							satisfied, then copy the latest plan to the task chat below to kick off the build. Have fun 🚀
+							satisfied, then copy the latest plan to the task chat below to kick off the build. Have fun 🔥
 						</p>
 					</div>
 					{taskHistory.length > 0 && <HistoryPreview showHistoryView={showHistoryView} />}

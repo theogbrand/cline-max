@@ -3167,52 +3167,93 @@ export class Cline {
 	async generatePlan(planText: string): Promise<string> {
 		// Parse the messages array from the JSON string
 		const { messages } = JSON.parse(planText);
-		
-		// Simple system prompt for plan generation
-		const systemPrompt = "You are a helpful AI assistant that helps users plan and break down tasks. Analyze the user's input and provide clear, actionable steps and suggestions.";
-		
-		// Format messages for API with proper typing
-		const formattedMessages: Anthropic.MessageParam[] = [
+		const userTask = messages[0].text; // This contains the <task> wrapped text
+
+		// Define metaprompts inline for now
+		const metaprompt1 = `Given a task or project description, analyze it to identify key components, dependencies, and potential challenges. Break down the task into logical steps, considering technical requirements and implementation details. Focus on creating a structured outline that will serve as a foundation for detailed planning.
+
+Task to analyze:
+{input}`;
+
+		const metaprompt2 = `Based on the initial analysis, develop a comprehensive implementation plan. Transform the structured outline into specific, actionable steps with technical details, potential gotchas, and implementation suggestions. Consider edge cases, error handling, and best practices.
+
+Initial analysis:
+{input}`;
+
+		// System prompts for each stage
+		const systemPrompt1 = "You are an expert system architect focused on analyzing tasks and breaking them down into structured components. Your goal is to create a clear, logical outline of the task's requirements and challenges.";
+		const systemPrompt2 = "You are an expert technical planner focused on converting high-level analysis into detailed, actionable implementation steps. Your goal is to create a comprehensive plan that addresses all technical aspects and potential challenges.";
+
+		// First API call - Initial Analysis
+		const firstPrompt = metaprompt1.replace('{input}', userTask);
+		const firstMessages: Anthropic.MessageParam[] = [
 			{
 				role: "user" as const,
-				content: messages[0].text // This contains the <task> wrapped text
+				content: firstPrompt
 			}
 		];
 
-		// Use the formatted messages with createMessage
-		const stream = this.api.createMessage(
-			systemPrompt,
-			formattedMessages
-		);
+		const firstStream = this.api.createMessage(systemPrompt1, firstMessages);
+		let firstResult = "";
+		let lastPartialUpdate = 0;
+		const PARTIAL_UPDATE_INTERVAL = 50;
 
-		let accumulatedText = ""
-		let lastPartialUpdate = 0
-		const PARTIAL_UPDATE_INTERVAL = 50 // ms between partial updates to avoid flooding
-
-		for await (const chunk of stream) {
+		for await (const chunk of firstStream) {
 			if (chunk.type === "text") {
-				accumulatedText += chunk.text
+				firstResult += chunk.text;
 				
-				// Only send partial updates periodically to avoid overwhelming the UI
-				const now = Date.now()
+				const now = Date.now();
 				if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
 					await this.providerRef.deref()?.postMessageToWebview({
 						type: "planResponse",
-						text: accumulatedText,
+						text: "Stage 1/2: Initial Analysis\n\n" + firstResult,
 						partial: true
 					});
-					lastPartialUpdate = now
+					lastPartialUpdate = now;
 				}
 			}
 		}
 
-		// Send final complete response with full accumulated text
+		// Second API call - Detailed Planning
+		const secondPrompt = metaprompt2.replace('{input}', firstResult);
+		const secondMessages: Anthropic.MessageParam[] = [
+			{
+				role: "assistant" as const,
+				content: firstResult
+			},
+			{
+				role: "user" as const,
+				content: secondPrompt
+			}
+		];
+
+		const secondStream = this.api.createMessage(systemPrompt2, secondMessages);
+		let finalResult = "";
+		lastPartialUpdate = 0;
+
+		for await (const chunk of secondStream) {
+			if (chunk.type === "text") {
+				finalResult += chunk.text;
+				
+				const now = Date.now();
+				if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
+					await this.providerRef.deref()?.postMessageToWebview({
+						type: "planResponse",
+						text: "Stage 2/2: Implementation Planning\n\n" + finalResult,
+						partial: true
+					});
+					lastPartialUpdate = now;
+				}
+			}
+		}
+
+		// Send final complete response
 		await this.providerRef.deref()?.postMessageToWebview({
 			type: "planResponse",
-			text: accumulatedText,
+			text: finalResult,
 			partial: false
 		});
 
-		return accumulatedText;
+		return finalResult;
 	}
 }

@@ -47,6 +47,7 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 
 	const [inputValue, setInputValue] = useState("")
 	const [planValue, setPlanValue] = useState("")
+	const [showPlanEditor, setShowPlanEditor] = useState(true)
 	const textAreaRef = useRef<HTMLTextAreaElement>(null)
 	const [textAreaDisabled, setTextAreaDisabled] = useState(false)
 	const [selectedImages, setSelectedImages] = useState<string[]>([])
@@ -715,16 +716,26 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 				overflow: "hidden",
 			}}>
 			{task ? (
-				<TaskHeader
-					task={task}
-					tokensIn={apiMetrics.totalTokensIn}
-					tokensOut={apiMetrics.totalTokensOut}
-					doesModelSupportPromptCache={selectedModelInfo.supportsPromptCache}
-					cacheWrites={apiMetrics.totalCacheWrites}
-					cacheReads={apiMetrics.totalCacheReads}
-					totalCost={apiMetrics.totalCost}
-					onClose={handleTaskCloseButtonClick}
-				/>
+				<div>
+					<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+						<TaskHeader
+							task={task}
+							tokensIn={apiMetrics.totalTokensIn}
+							tokensOut={apiMetrics.totalTokensOut}
+							doesModelSupportPromptCache={selectedModelInfo.supportsPromptCache}
+							cacheWrites={apiMetrics.totalCacheWrites}
+							cacheReads={apiMetrics.totalCacheReads}
+							totalCost={apiMetrics.totalCost}
+							onClose={handleTaskCloseButtonClick}
+						/>
+						<VSCodeButton
+							appearance="secondary"
+							onClick={() => setShowPlanEditor(!showPlanEditor)}
+							style={{ marginRight: "10px" }}>
+							{showPlanEditor ? "Hide Planner" : "Show Planner"}
+						</VSCodeButton>
+					</div>
+				</div>
 			) : (
 				<div
 					style={{
@@ -867,13 +878,15 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 					)}
 				</>
 			)}
-			<PlanEditor
-				plan={planValue}
-				onUpdate={(plan) => {
-					setPlanValue(plan)
-				}}
-				readonly={textAreaDisabled}
-			/>
+			{showPlanEditor && (
+				<PlanEditor
+					plan={planValue}
+					onUpdate={(plan) => {
+						setPlanValue(plan)
+					}}
+					readonly={textAreaDisabled}
+				/>
+			)}
 			<ChatTextArea
 				ref={textAreaRef}
 				inputValue={inputValue}

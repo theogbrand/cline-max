@@ -36,51 +36,24 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => 
 				setMessageHistory((prev) => {
 					const lastMessage = prev[prev.length - 1]
 					
-					// Handle streaming updates
-					if (message.partial) {
-						// If we already have a partial message, update it with accumulated text
-						if (lastMessage?.role === "assistant" && lastMessage.partial) {
-							const updatedMessages = [...prev]
-							updatedMessages[prev.length - 1] = {
-								...lastMessage,
-								text: message.text || "", // Use accumulated text directly
-								partial: true
-							}
-							return updatedMessages
-						}
-						
-						// Create new partial message with initial text
-						return [...prev, {
+					// If we have a last message that's from assistant, update it
+					if (lastMessage?.role === "assistant") {
+						const updatedMessages = [...prev]
+						updatedMessages[prev.length - 1] = {
+							...lastMessage,
 							text: message.text || "",
-							role: "assistant",
-							timestamp: Date.now(),
-							partial: true
-						}]
+							partial: message.partial
+						}
+						return updatedMessages
 					}
 					
-					// Handle completion
-					if (!message.partial) {
-						// If we have a partial message, finalize it
-						if (lastMessage?.role === "assistant" && lastMessage.partial) {
-							const updatedMessages = [...prev]
-							updatedMessages[prev.length - 1] = {
-								...lastMessage,
-								text: message.text || "", // Use final accumulated text
-								partial: false
-							}
-							return updatedMessages
-						}
-						
-						// Create new complete message if no partial exists
-						return [...prev, {
-							text: message.text || "",
-							role: "assistant",
-							timestamp: Date.now(),
-							partial: false
-						}]
-					}
-					
-					return prev
+					// Otherwise create a new message
+					return [...prev, {
+						text: message.text || "",
+						role: "assistant",
+						timestamp: Date.now(),
+						partial: message.partial
+					}]
 				})
 				
 				// Only set generating to false when we get the final message

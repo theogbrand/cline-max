@@ -1,8 +1,8 @@
 {
-	"name": "claude-dev",
-	"displayName": "Cline (prev. Claude Dev)",
-	"description": "Autonomous coding agent right in your IDE, capable of creating/editing files, running commands, using the browser, and more with your permission every step of the way.",
-	"version": "3.1.5",
+	"name": "cline-max",
+	"displayName": "Cline Max",
+	"description": "A fork of Cline, an autonomous coding agent built for planner-coder workflows.",
+	"version": "1.0.0",
 	"icon": "assets/icons/icon.png",
 	"galleryBanner": {
 		"color": "#617A91",
@@ -12,15 +12,15 @@
 		"vscode": "^1.84.0"
 	},
 	"author": {
-		"name": "Cline Bot Inc."
+		"name": "Maximum Compute Inc."
 	},
 	"license": "Apache-2.0",
-	"publisher": "saoudrizwan",
+	"publisher": "theogbrand",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/cline/cline"
+		"url": "https://github.com/theogbrand/cline-max"
 	},
-	"homepage": "https://cline.bot",
+	"homepage": "https://x.com/maximumcompute",
 	"categories": [
 		"AI",
 		"Chat",
@@ -49,8 +49,8 @@
 		"viewsContainers": {
 			"activitybar": [
 				{
-					"id": "claude-dev-ActivityBar",
-					"title": "Cline",
+					"id": "cline-max-ActivityBar",
+					"title": "Cline Max",
 					"icon": "$(flame)"
 				}
 			]

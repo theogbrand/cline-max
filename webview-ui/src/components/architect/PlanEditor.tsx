@@ -127,7 +127,15 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 			{messageHistory.length > 0 && (
 				<ResponseSection>
 					<ResponseHeader>
-						<h3>Plan Discussion</h3>
+						<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+							<h3>Plan Discussion</h3>
+							<VSCodeButton
+								appearance="secondary"
+								onClick={() => onMessageHistoryUpdate(() => [])}
+							>
+								Clear History
+							</VSCodeButton>
+						</div>
 					</ResponseHeader>
 					<ResponseContent>
 						{messageHistory.map((msg, idx) => (

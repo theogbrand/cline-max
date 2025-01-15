@@ -28,6 +28,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 }) => {
 	const [localPlan, setLocalPlan] = useState(plan)
 	const [isGenerating, setIsGenerating] = useState(false)
+	const [hasInitialPlan, setHasInitialPlan] = useState(false)
 
 	useEffect(() => {
 		if (!localPlan) {
@@ -66,6 +67,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 				// Only set generating to false when we get the final message
 				if (!message.partial) {
 					setIsGenerating(false)
+					setHasInitialPlan(true)
 				}
 			}
 		}
@@ -111,12 +113,13 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 				messages: [
 					{
 						type: "text",
-						text: `<task>\n${consolidatedText}\n</task>`
+						text: `<task>\n${consolidatedText}\n</task>`,
+						isInitialPlan: !hasInitialPlan
 					}
 				]
 			})
 		})
-	}, [localPlan, messageHistory])
+	}, [localPlan, messageHistory, hasInitialPlan])
 
 	return (
 		<Container>

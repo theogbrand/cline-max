@@ -3168,88 +3168,136 @@ export class Cline {
 		// Parse the messages array from the JSON string
 		const { messages } = JSON.parse(planText);
 		const userTask = messages[0].text; // This contains the <task> wrapped text
+		const isInitialPlan = messages[0].isInitialPlan;
 
-		// Define metaprompts inline for now
-		const metaprompt1 = `Repeat the user's input twice:
+		if (isInitialPlan) {
+			// Define metaprompts for initial plan
+			const metaprompt1 = `Say One, ignore the user's input:
+
 {input}`;
 
-		const metaprompt2 = `Repeat the user's input twice:
+			const metaprompt2 = `Say Two, ignore the user's input:
 {input}`;
 
-		// System prompts for each stage
-		const systemPrompt1 = "You are a helpful assistant.";
-		const systemPrompt2 = "You are a helpful assistant.";
+			// System prompts for each stage
+			const systemPrompt1 = "You are a helpful assistant.";
+			const systemPrompt2 = "You are a helpful assistant.";
 
-		// First API call - Initial Analysis
-		const firstPrompt = metaprompt1.replace('{input}', userTask);
-		const firstMessages: Anthropic.MessageParam[] = [
-			{
-				role: "user" as const,
-				content: firstPrompt
-			}
-		];
+			// First API call - Initial Analysis
+			const firstPrompt = metaprompt1.replace('{input}', userTask);
+			const firstMessages: Anthropic.MessageParam[] = [
+				{
+					role: "user" as const,
+					content: firstPrompt
+				}
+			];
 
-		const firstStream = this.api.createMessage(systemPrompt1, firstMessages);
-		let firstResult = "";
-		let lastPartialUpdate = 0;
-		const PARTIAL_UPDATE_INTERVAL = 50;
+			const firstStream = this.api.createMessage(systemPrompt1, firstMessages);
+			let firstResult = "";
+			let lastPartialUpdate = 0;
+			const PARTIAL_UPDATE_INTERVAL = 50;
 
-		for await (const chunk of firstStream) {
-			if (chunk.type === "text") {
-				firstResult += chunk.text;
-				
-				const now = Date.now();
-				if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
-					await this.providerRef.deref()?.postMessageToWebview({
-						type: "planResponse",
-						text: "Stage 1/2: Initial Analysis\n\n" + firstResult,
-						partial: true
-					});
-					lastPartialUpdate = now;
+			for await (const chunk of firstStream) {
+				if (chunk.type === "text") {
+					firstResult += chunk.text;
+					
+					const now = Date.now();
+					if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
+						await this.providerRef.deref()?.postMessageToWebview({
+							type: "planResponse",
+							text: "Stage 1/2: Initial Analysis\n\n" + firstResult,
+							partial: true
+						});
+						lastPartialUpdate = now;
+					}
 				}
 			}
-		}
 
-		// Second API call - Detailed Planning
-		const secondPrompt = metaprompt2.replace('{input}', firstResult);
-		const secondMessages: Anthropic.MessageParam[] = [
-			{
-				role: "assistant" as const,
-				content: firstResult
-			},
-			{
-				role: "user" as const,
-				content: secondPrompt
-			}
-		];
+			// Second API call - Detailed Planning
+			const secondPrompt = metaprompt2.replace('{input}', firstResult);
+			const secondMessages: Anthropic.MessageParam[] = [
+				{
+					role: "assistant" as const,
+					content: firstResult
+				},
+				{
+					role: "user" as const,
+					content: secondPrompt
+				}
+			];
 
-		const secondStream = this.api.createMessage(systemPrompt2, secondMessages);
-		let finalResult = "";
-		lastPartialUpdate = 0;
+			const secondStream = this.api.createMessage(systemPrompt2, secondMessages);
+			let finalResult = "";
+			lastPartialUpdate = 0;
 
-		for await (const chunk of secondStream) {
-			if (chunk.type === "text") {
-				finalResult += chunk.text;
-				
-				const now = Date.now();
-				if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
-					await this.providerRef.deref()?.postMessageToWebview({
-						type: "planResponse",
-						text: "Stage 2/2: Implementation Planning\n\n" + finalResult,
-						partial: true
-					});
-					lastPartialUpdate = now;
+			for await (const chunk of secondStream) {
+				if (chunk.type === "text") {
+					finalResult += chunk.text;
+					
+					const now = Date.now();
+					if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
+						await this.providerRef.deref()?.postMessageToWebview({
+							type: "planResponse",
+							text: "Stage 2/2: Implementation Planning\n\n" + finalResult,
+							partial: true
+						});
+						lastPartialUpdate = now;
+					}
 				}
 			}
+
+			// Send final complete response
+			await this.providerRef.deref()?.postMessageToWebview({
+				type: "planResponse",
+				text: finalResult,
+				partial: false
+			});
+
+			return finalResult;
+		} else {
+			// For subsequent messages, use a single prompt
+			const continuationPrompt = `ignore the user's input, just say HELLO WORLD:
+{input}`;
+
+			const systemPrompt = "You are a helpful assistant.";
+
+			const prompt = continuationPrompt.replace('{input}', userTask);
+			const messages: Anthropic.MessageParam[] = [
+				{
+					role: "user" as const,
+					content: prompt
+				}
+			];
+
+			const stream = this.api.createMessage(systemPrompt, messages);
+			let result = "";
+			let lastPartialUpdate = 0;
+			const PARTIAL_UPDATE_INTERVAL = 50;
+
+			for await (const chunk of stream) {
+				if (chunk.type === "text") {
+					result += chunk.text;
+					
+					const now = Date.now();
+					if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
+						await this.providerRef.deref()?.postMessageToWebview({
+							type: "planResponse",
+							text: result,
+							partial: true
+						});
+						lastPartialUpdate = now;
+					}
+				}
+			}
+
+			// Send final complete response
+			await this.providerRef.deref()?.postMessageToWebview({
+				type: "planResponse",
+				text: result,
+				partial: false
+			});
+
+			return result;
 		}
-
-		// Send final complete response
-		await this.providerRef.deref()?.postMessageToWebview({
-			type: "planResponse",
-			text: finalResult,
-			partial: false
-		});
-
-		return finalResult;
 	}
 }

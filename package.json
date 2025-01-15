@@ -56,11 +56,11 @@
 			]
 		},
 		"views": {
-			"claude-dev-ActivityBar": [
+			"cline-max-ActivityBar": [
 				{
 					"type": "webview",
 					"id": "claude-dev.SidebarProvider",
-					"name": ""
+					"name": "Cline Max"
 				}
 			]
 		},

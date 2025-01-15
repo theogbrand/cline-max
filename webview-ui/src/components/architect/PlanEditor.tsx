@@ -229,9 +229,9 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 					<VSCodeButton
 						appearance="secondary"
 						onClick={handleCopyLatestMessage}
-						disabled={messageHistory.length === 0}
+						disabled={messageHistory.length === 0 || isGenerating}
 					>
-						{copyFeedback || "Copy Latest Message"}
+						{copyFeedback || "Copy Latest Plan"}
 					</VSCodeButton>
 				</Actions>
 			)}

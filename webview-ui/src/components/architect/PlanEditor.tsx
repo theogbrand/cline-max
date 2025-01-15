@@ -29,6 +29,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 	const [localPlan, setLocalPlan] = useState(plan)
 	const [isGenerating, setIsGenerating] = useState(false)
 	const [hasInitialPlan, setHasInitialPlan] = useState(false)
+	const [copyFeedback, setCopyFeedback] = useState("")
 
 	useEffect(() => {
 		if (!localPlan) {
@@ -80,6 +81,14 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 		setLocalPlan(newValue)
 		onUpdate(newValue)
 	}
+
+	const handleCopyLatestMessage = useCallback(async () => {
+		if (messageHistory.length === 0) return
+		const lastMessage = messageHistory[messageHistory.length - 1]
+		await navigator.clipboard.writeText(lastMessage.text)
+		setCopyFeedback("Copied!")
+		setTimeout(() => setCopyFeedback(""), 2000)
+	}, [messageHistory])
 
 	const handleSubmit = useCallback(() => {
 		if (!localPlan.trim()) return
@@ -215,7 +224,14 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 			{!readonly && (
 				<Actions>
 					<VSCodeButton appearance="primary" onClick={handleSubmit} disabled={isGenerating || !localPlan.trim()}>
-						{isGenerating ? "Generating..." : messageHistory.length > 0 ? "Continue Plan" : "Generate Plan"}
+						{isGenerating ? "Generating..." : messageHistory.length > 0 ? "Iterate Plan" : "Generate Plan"}
+					</VSCodeButton>
+					<VSCodeButton
+						appearance="secondary"
+						onClick={handleCopyLatestMessage}
+						disabled={messageHistory.length === 0}
+					>
+						{copyFeedback || "Copy Latest Message"}
 					</VSCodeButton>
 				</Actions>
 			)}

@@ -3180,15 +3180,39 @@ export class Cline {
 		];
 
 		// Use the formatted messages with createMessage
-		let result = ""
-		for await (const chunk of this.api.createMessage(
+		const stream = this.api.createMessage(
 			systemPrompt,
 			formattedMessages
-		)) {
+		);
+
+		let accumulatedText = ""
+		let lastPartialUpdate = 0
+		const PARTIAL_UPDATE_INTERVAL = 50 // ms between partial updates to avoid flooding
+
+		for await (const chunk of stream) {
 			if (chunk.type === "text") {
-				result += chunk.text
+				accumulatedText += chunk.text
+				
+				// Only send partial updates periodically to avoid overwhelming the UI
+				const now = Date.now()
+				if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
+					await this.providerRef.deref()?.postMessageToWebview({
+						type: "planResponse",
+						text: accumulatedText,
+						partial: true
+					});
+					lastPartialUpdate = now
+				}
 			}
 		}
-		return result
+
+		// Send final complete response with full accumulated text
+		await this.providerRef.deref()?.postMessageToWebview({
+			type: "planResponse",
+			text: accumulatedText,
+			partial: false
+		});
+
+		return accumulatedText;
 	}
 }

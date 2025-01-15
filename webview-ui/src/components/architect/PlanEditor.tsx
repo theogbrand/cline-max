@@ -14,6 +14,7 @@ type Message = {
 	text: string
 	role: "user" | "assistant"
 	timestamp?: number
+	partial?: boolean // Added to support streaming
 }
 
 const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => {
@@ -28,18 +29,64 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => 
 	}, [plan, localPlan])
 
 	useEffect(() => {
-		const handleMessage = (event: MessageEvent<{ type: string; text?: string }>) => {
+		const handleMessage = (event: MessageEvent<{ type: string; text?: string; partial?: boolean }>) => {
 			const message = event.data
+			
 			if (message.type === "planResponse") {
-				setMessageHistory((prev) => [
-					...prev,
-					{
-						text: message.text ?? "",
-						role: "assistant",
-						timestamp: Date.now(),
-					},
-				])
-				setIsGenerating(false)
+				setMessageHistory((prev) => {
+					const lastMessage = prev[prev.length - 1]
+					
+					// Handle streaming updates
+					if (message.partial) {
+						// If we already have a partial message, update it with accumulated text
+						if (lastMessage?.role === "assistant" && lastMessage.partial) {
+							const updatedMessages = [...prev]
+							updatedMessages[prev.length - 1] = {
+								...lastMessage,
+								text: message.text || "", // Use accumulated text directly
+								partial: true
+							}
+							return updatedMessages
+						}
+						
+						// Create new partial message with initial text
+						return [...prev, {
+							text: message.text || "",
+							role: "assistant",
+							timestamp: Date.now(),
+							partial: true
+						}]
+					}
+					
+					// Handle completion
+					if (!message.partial) {
+						// If we have a partial message, finalize it
+						if (lastMessage?.role === "assistant" && lastMessage.partial) {
+							const updatedMessages = [...prev]
+							updatedMessages[prev.length - 1] = {
+								...lastMessage,
+								text: message.text || "", // Use final accumulated text
+								partial: false
+							}
+							return updatedMessages
+						}
+						
+						// Create new complete message if no partial exists
+						return [...prev, {
+							text: message.text || "",
+							role: "assistant",
+							timestamp: Date.now(),
+							partial: false
+						}]
+					}
+					
+					return prev
+				})
+				
+				// Only set generating to false when we get the final message
+				if (!message.partial) {
+					setIsGenerating(false)
+				}
 			}
 		}
 		window.addEventListener("message", handleMessage)
@@ -63,6 +110,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => 
 				text: localPlan.trim(),
 				role: "user",
 				timestamp: Date.now(),
+				partial: false
 			},
 		])
 
@@ -103,16 +151,52 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly }) => 
 					</ResponseHeader>
 					<ResponseContent>
 						{messageHistory.map((msg, idx) => (
-							<div key={idx} style={{ marginBottom: 16, opacity: msg.role === "user" ? 0.8 : 1 }}>
+							<div key={idx} style={{
+								marginBottom: 16,
+								opacity: msg.role === "user" ? 0.8 : 1,
+								position: 'relative',
+								paddingRight: msg.partial && msg.role === "assistant" ? '12px' : undefined
+							}}>
 								<div style={{
 									fontWeight: 600,
 									fontSize: "0.9em",
 									marginBottom: 4,
-									color: "var(--vscode-descriptionForeground)"
+									color: "var(--vscode-descriptionForeground)",
+									display: 'flex',
+									alignItems: 'center',
+									gap: '8px'
 								}}>
-									{msg.role === "user" ? "You:" : "Assistant:"}
+									{msg.role === "user" ? "You:" : (
+										<>
+											Assistant
+											{msg.partial && (
+												<span style={{
+													color: 'var(--vscode-errorForeground)',
+													fontSize: '0.8em',
+													opacity: 0.9
+												}}>
+													(streaming...)
+												</span>
+											)}
+										</>
+									)}
 								</div>
-								<MarkdownBlock markdown={msg.text} />
+								<div style={{ position: 'relative' }}>
+									<MarkdownBlock markdown={msg.text} />
+									{msg.partial && msg.role === "assistant" && (
+										<div
+											style={{
+												position: 'absolute',
+												right: '-12px',
+												top: 0,
+												bottom: 0,
+												width: '4px',
+												backgroundColor: 'var(--vscode-errorForeground)',
+												animation: 'blink 1s step-end infinite'
+											}}
+										/>
+									)}
+								</div>
 							</div>
 						))}
 					</ResponseContent>
@@ -146,6 +230,11 @@ const Container = styled.div`
 	display: flex;
 	flex-direction: column;
 	gap: 16px;
+
+	@keyframes blink {
+		0%, 100% { border-color: transparent; }
+		50% { border-color: var(--vscode-editor-foreground); }
+	}
 `
 
 const Header = styled.div`

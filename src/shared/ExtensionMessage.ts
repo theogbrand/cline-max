@@ -22,6 +22,7 @@ export interface ExtensionMessage {
 		| "relinquishControl"
 		| "planResponse"
 	text?: string
+	partial?: boolean
 	action?: "chatButtonClicked" | "mcpButtonClicked" | "settingsButtonClicked" | "historyButtonClicked" | "didBecomeVisible"
 	invoke?: "sendMessage" | "primaryButtonClick" | "secondaryButtonClick"
 	state?: ExtensionState

@@ -3164,6 +3164,12 @@ export class Cline {
 		return `<environment_details>\n${details.trim()}\n</environment_details>`
 	}
 
+	async resetPlanState(): Promise<void> {
+		// Reset plan-specific state
+		this.apiConversationHistory = []
+		this.clineMessages = []
+	}
+
 	async generatePlan(planText: string): Promise<string> {
 		// Parse the messages array from the JSON string
 		const { messages } = JSON.parse(planText);
@@ -3172,11 +3178,11 @@ export class Cline {
 
 		if (isInitialPlan) {
 			// Define metaprompts for initial plan
-			const metaprompt1 = `Say One, ignore the user's input:
+			const metaprompt1 = `Analyze the user input and generate a clear <purpose>, <steps>, and <dependencies> section:
 
 {input}`;
 
-			const metaprompt2 = `Say Two, ignore the user's input:
+			const metaprompt2 = `Generate a detailed <implementation_plan> based on the <purpose>, <steps>, and <dependencies> sections:
 {input}`;
 
 			// System prompts for each stage
@@ -3256,7 +3262,7 @@ export class Cline {
 			return finalResult;
 		} else {
 			// For subsequent messages, use a single prompt
-			const continuationPrompt = `ignore the user's input, just say HELLO WORLD:
+			const continuationPrompt = `Iterate on the plan based on the user feedback:
 {input}`;
 
 			const systemPrompt = "You are a helpful assistant.";

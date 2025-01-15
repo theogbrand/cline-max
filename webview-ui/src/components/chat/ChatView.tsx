@@ -302,6 +302,12 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 		vscode.postMessage({ type: "clearTask" })
 	}, [])
 
+	const resetPlanDiscussion = useCallback(() => {
+		setPlanMessages([])
+		setPlanValue("")
+		setShowPlanEditor(true)
+	}, [])
+
 	/*
 	This logic depends on the useEffect[messages] above to set clineAsk, after which buttons are shown and we then send an askResponse to the extension.
 	*/
@@ -729,12 +735,18 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 							totalCost={apiMetrics.totalCost}
 							onClose={handleTaskCloseButtonClick}
 						/>
-						<VSCodeButton
-							appearance="secondary"
-							onClick={() => setShowPlanEditor(!showPlanEditor)}
-							style={{ marginRight: "10px" }}>
-							{showPlanEditor ? "Hide Planner" : "Show Planner"}
-						</VSCodeButton>
+						<div style={{ display: 'flex', gap: '10px', marginRight: '10px' }}>
+							<VSCodeButton
+								appearance="secondary"
+								onClick={resetPlanDiscussion}>
+								Clear Plan History
+							</VSCodeButton>
+							<VSCodeButton
+								appearance="secondary"
+								onClick={() => setShowPlanEditor(!showPlanEditor)}>
+								{showPlanEditor ? "Hide Planner" : "Show Planner"}
+							</VSCodeButton>
+						</div>
 					</div>
 				</div>
 			) : (

@@ -1203,6 +1203,7 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 			await this.storeSecret(key, undefined)
 		}
 		if (this.cline) {
+			await this.cline.resetPlanState()
 			this.cline.abortTask()
 			this.cline = undefined
 		}

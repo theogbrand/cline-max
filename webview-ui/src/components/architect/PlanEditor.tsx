@@ -134,7 +134,14 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 							<h3>Plan Discussion</h3>
 							<VSCodeButton
 								appearance="secondary"
-								onClick={() => onMessageHistoryUpdate(() => [])}
+								onClick={() => {
+									// Only clear local plan history
+									onMessageHistoryUpdate(() => [])
+									// Reset local plan state
+									setHasInitialPlan(false)
+									// Clear local plan text
+									setLocalPlan("")
+								}}
 							>
 								Clear History
 							</VSCodeButton>

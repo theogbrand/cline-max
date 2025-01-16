@@ -1,9 +1,9 @@
 {
 	"name": "cline-max",
 	"displayName": "Cline Max",
-	"description": "A fork of Cline, an autonomous coding agent built for planner-coder workflows.",
+	"description": "A fork of Cline, an autonomous coding agent with an optimized planner-coder workflow.",
 	"version": "1.0.0",
-	"icon": "assets/icons/icon.png",
+	"icon": "assets/icons/comp.png",
 	"galleryBanner": {
 		"color": "#617A91",
 		"theme": "dark"

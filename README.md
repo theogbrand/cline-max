@@ -1,3 +1,7 @@
+# Cline Max - Autonomous Planner-Coder Agent
+
+https://github.com/user-attachments/assets/d65beed2-bc51-4f33-9a0d-a14d24ac1c8c
+
 # Cline (prev. Claude Dev) – \#1 on OpenRouter
 
 <p align="center">

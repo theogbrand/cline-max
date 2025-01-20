@@ -59,7 +59,7 @@
 			"cline-max-ActivityBar": [
 				{
 					"type": "webview",
-					"id": "claude-dev.SidebarProvider",
+					"id": "cline-max.SidebarProvider",
 					"name": "Cline Max"
 				}
 			]

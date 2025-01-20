@@ -66,32 +66,32 @@
 		},
 		"commands": [
 			{
-				"command": "cline.plusButtonClicked",
+				"command": "cline-max.plusButtonClicked",
 				"title": "New Task",
 				"icon": "$(add)"
 			},
 			{
-				"command": "cline.mcpButtonClicked",
+				"command": "cline-max.mcpButtonClicked",
 				"title": "MCP Servers",
 				"icon": "$(server)"
 			},
 			{
-				"command": "cline.historyButtonClicked",
+				"command": "cline-max.historyButtonClicked",
 				"title": "History",
 				"icon": "$(history)"
 			},
 			{
-				"command": "cline.popoutButtonClicked",
+				"command": "cline-max.popoutButtonClicked",
 				"title": "Open in Editor",
 				"icon": "$(link-external)"
 			},
 			{
-				"command": "cline.settingsButtonClicked",
+				"command": "cline-max.settingsButtonClicked",
 				"title": "Settings",
 				"icon": "$(settings-gear)"
 			},
 			{
-				"command": "cline.openInNewTab",
+				"command": "cline-max.openInNewTab",
 				"title": "Open In New Tab",
 				"category": "Cline"
 			}
@@ -99,29 +99,29 @@
 		"menus": {
 			"view/title": [
 				{
-					"command": "cline.plusButtonClicked",
+					"command": "cline-max.plusButtonClicked",
 					"group": "navigation@1",
-					"when": "view == claude-dev.SidebarProvider"
+					"when": "view == cline-max.SidebarProvider"
 				},
 				{
-					"command": "cline.mcpButtonClicked",
+					"command": "cline-max.mcpButtonClicked",
 					"group": "navigation@2",
-					"when": "view == claude-dev.SidebarProvider"
+					"when": "view == cline-max.SidebarProvider"
 				},
 				{
-					"command": "cline.historyButtonClicked",
+					"command": "cline-max.historyButtonClicked",
 					"group": "navigation@3",
-					"when": "view == claude-dev.SidebarProvider"
+					"when": "view == cline-max.SidebarProvider"
 				},
 				{
-					"command": "cline.popoutButtonClicked",
+					"command": "cline-max.popoutButtonClicked",
 					"group": "navigation@4",
-					"when": "view == claude-dev.SidebarProvider"
+					"when": "view == cline-max.SidebarProvider"
 				},
 				{
-					"command": "cline.settingsButtonClicked",
+					"command": "cline-max.settingsButtonClicked",
 					"group": "navigation@5",
-					"when": "view == claude-dev.SidebarProvider"
+					"when": "view == cline-max.SidebarProvider"
 				}
 			]
 		}

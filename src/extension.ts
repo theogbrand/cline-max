@@ -35,7 +35,7 @@ export function activate(context: vscode.ExtensionContext) {
 	)
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("cline.plusButtonClicked", async () => {
+		vscode.commands.registerCommand("cline-max.plusButtonClicked", async () => {
 			outputChannel.appendLine("Plus button Clicked")
 			await sidebarProvider.clearTask()
 			await sidebarProvider.postStateToWebview()
@@ -47,7 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
 	)
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("cline.mcpButtonClicked", () => {
+		vscode.commands.registerCommand("cline-max.mcpButtonClicked", () => {
 			sidebarProvider.postMessageToWebview({
 				type: "action",
 				action: "mcpButtonClicked",

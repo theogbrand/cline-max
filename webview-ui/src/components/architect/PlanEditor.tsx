@@ -94,16 +94,16 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 		if (!localPlan.trim()) return
 		setIsGenerating(true)
 		
-		// Add user message to history before sending
-		onMessageHistoryUpdate((prevMessages: Message[]) => [
-			...prevMessages,
-			{
-				text: localPlan.trim(),
-				role: "user",
-				timestamp: Date.now(),
-				partial: false
-			},
-		])
+		// For UI which only displays latest message. For now we display all messages to iterate on plan.
+		// onMessageHistoryUpdate((prevMessages: Message[]) => [
+		// 	...prevMessages,
+		// 	{
+		// 		text: localPlan.trim(),
+		// 		role: "user",
+		// 		timestamp: Date.now(),
+		// 		partial: false
+		// 	},
+		// ])
 
 		// Consolidate message history into a single text block
 		const consolidatedText = [

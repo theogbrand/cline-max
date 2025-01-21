@@ -32,11 +32,12 @@ interface ChatViewProps {
 	showAnnouncement: boolean
 	hideAnnouncement: () => void
 	showHistoryView: () => void
+	renderPlanEditor: boolean
 }
 
 export const MAX_IMAGES_PER_MESSAGE = 20 // Anthropic limits to 20 images
 
-const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryView }: ChatViewProps) => {
+const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryView, renderPlanEditor }: ChatViewProps) => {
 	const { version, clineMessages: messages, taskHistory, apiConfiguration } = useExtensionState()
 
 	//const task = messages.length > 0 ? (messages[0].say === "task" ? messages[0] : undefined) : undefined) : undefined
@@ -65,6 +66,14 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 	const disableAutoScrollRef = useRef(false)
 	const [showScrollToBottom, setShowScrollToBottom] = useState(false)
 	const [isAtBottom, setIsAtBottom] = useState(false)
+
+	useEffect(() => {
+		if (renderPlanEditor) {
+			setShowPlanEditor(true)
+			setPlanMessages([])
+			setPlanValue("")
+		}
+	}, [renderPlanEditor])
 
 	// UI layout depends on the last 2 messages
 	// (since it relies on the content of these messages, we are deep comparing. i.e. the button state after hitting button sets enableButtons to false, and this effect otherwise would have to true again even if messages didn't change

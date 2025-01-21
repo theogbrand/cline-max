@@ -15,6 +15,7 @@ const AppContent = () => {
 	const [showHistory, setShowHistory] = useState(false)
 	const [showMcp, setShowMcp] = useState(false)
 	const [showAnnouncement, setShowAnnouncement] = useState(false)
+	const [showPlanner, setShowPlanner] = useState(false)
 
 	const handleMessage = useCallback((e: MessageEvent) => {
 		const message: ExtensionMessage = e.data
@@ -25,23 +26,27 @@ const AppContent = () => {
 						setShowSettings(true)
 						setShowHistory(false)
 						setShowMcp(false)
+						setShowPlanner(false)
 						break
 					case "historyButtonClicked":
 						setShowSettings(false)
 						setShowHistory(true)
 						setShowMcp(false)
+						setShowPlanner(false)
 						break
 					case "mcpButtonClicked":
 						setShowSettings(false)
 						setShowHistory(false)
 						setShowMcp(true)
+						setShowPlanner(false)
 						break
 					case "chatButtonClicked":
 						setShowSettings(false)
 						setShowHistory(false)
 						setShowMcp(false)
+						setShowPlanner(true)
 						break
-				}
+			}
 				break
 		}
 	}, [])
@@ -75,6 +80,7 @@ const AppContent = () => {
 							setShowMcp(false)
 							setShowHistory(true)
 						}}
+						renderPlanEditor={showPlanner}
 						isHidden={showSettings || showHistory || showMcp}
 						showAnnouncement={showAnnouncement}
 						hideAnnouncement={() => {

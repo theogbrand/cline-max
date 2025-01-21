@@ -131,6 +131,13 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 		})
 	}, [localPlan, messageHistory, hasInitialPlan, onMessageHistoryUpdate])
 
+	const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+		if (e.key === "Enter" && !e.shiftKey) {
+			e.preventDefault()
+			handleSubmit()
+		}
+	}
+
 	return (
 		<Container>
 			<Header>
@@ -216,6 +223,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 				<StyledTextArea
 					value={localPlan}
 					onChange={handleOverviewChange}
+					onKeyDown={handleKeyPress}
 					rows={8}
 					readOnly={readonly || isGenerating}
 					placeholder={messageHistory.length > 0 ? "Continue the discussion..." : "Draft your plan here"}

@@ -345,6 +345,7 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 		setTextAreaDisabled(true)
 		setClineAsk(undefined)
 		setEnableButtons(false)
+		setShowPlanEditor(true)
 		// setPrimaryButtonText(undefined)
 		// setSecondaryButtonText(undefined)
 		disableAutoScrollRef.current = false

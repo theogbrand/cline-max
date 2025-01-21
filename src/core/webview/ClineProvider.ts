@@ -23,6 +23,7 @@ import { openMention } from "../mentions"
 import { getNonce } from "./getNonce"
 import { getUri } from "./getUri"
 import { AutoApprovalSettings, DEFAULT_AUTO_APPROVAL_SETTINGS } from "../../shared/AutoApprovalSettings"
+import { initTelemetry, disposeTelemetry,sendTelemetryEvent } from "../../services/telemetry/TelemetryService"
 
 /*
 https://github.com/microsoft/vscode-webview-ui-toolkit-samples/blob/main/default/weather-webview/src/providers/WeatherViewProvider.ts
@@ -89,6 +90,7 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 		ClineProvider.activeInstances.add(this)
 		this.workspaceTracker = new WorkspaceTracker(this)
 		this.mcpHub = new McpHub(this)
+		initTelemetry()
 	}
 
 	/*
@@ -116,6 +118,7 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 		this.mcpHub = undefined
 		this.outputChannel.appendLine("Disposed all disposables")
 		ClineProvider.activeInstances.delete(this)
+		disposeTelemetry()
 	}
 
 	public static getVisibleInstance(): ClineProvider | undefined {
@@ -546,6 +549,7 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 					}
 					case "generatePlan": {
 						try {
+							sendTelemetryEvent("User generated plan")
 							// Create a new Cline instance or use existing one
 							const { apiConfiguration, customInstructions, autoApprovalSettings } = await this.getState()
 							

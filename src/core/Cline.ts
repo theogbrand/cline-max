@@ -733,6 +733,9 @@ export class Cline {
 		this.isInitialized = true
 
 		let imageBlocks: Anthropic.ImageBlockParam[] = formatResponse.imageBlocks(images)
+		if (task?.includes("Generate plan")) {
+			return
+		} // temporary fix for now to prevent a CLINE task from initiating when planner is used
 		await this.initiateTaskLoop(
 			[
 				{

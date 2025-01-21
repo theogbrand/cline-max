@@ -40,31 +40,34 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 	useEffect(() => {
 		const handleMessage = (event: MessageEvent<{ type: string; text?: string; partial?: boolean }>) => {
 			const message = event.data
-			
+
 			if (message.type === "planResponse") {
 				onMessageHistoryUpdate((prevMessages) => {
 					const lastMessage = prevMessages[prevMessages.length - 1]
-					
+
 					// If we have a last message that's from assistant, update it
 					if (lastMessage?.role === "assistant") {
 						const updatedMessages = [...prevMessages]
 						updatedMessages[prevMessages.length - 1] = {
 							...lastMessage,
 							text: message.text || "",
-							partial: message.partial
+							partial: message.partial,
 						}
 						return updatedMessages
 					}
-					
+
 					// Otherwise create a new message
-					return [...prevMessages, {
-						text: message.text || "",
-						role: "assistant",
-						timestamp: Date.now(),
-						partial: message.partial
-					}]
+					return [
+						...prevMessages,
+						{
+							text: message.text || "",
+							role: "assistant",
+							timestamp: Date.now(),
+							partial: message.partial,
+						},
+					]
 				})
-				
+
 				// Only set generating to false when we get the final message
 				if (!message.partial) {
 					setIsGenerating(false)
@@ -74,7 +77,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 		}
 		window.addEventListener("message", handleMessage)
 		return () => window.removeEventListener("message", handleMessage)
-	}, [])
+	}, [onMessageHistoryUpdate])
 
 	const handleOverviewChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
 		const newValue = e.target.value
@@ -93,27 +96,25 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 	const handleSubmit = useCallback(() => {
 		if (!localPlan.trim()) return
 		setIsGenerating(true)
-		
-		// For UI which only displays latest message. For now we display all messages to iterate on plan.
-		// onMessageHistoryUpdate((prevMessages: Message[]) => [
-		// 	...prevMessages,
-		// 	{
-		// 		text: localPlan.trim(),
-		// 		role: "user",
-		// 		timestamp: Date.now(),
-		// 		partial: false
-		// 	},
-		// ])
 
-		// Consolidate message history into a single text block
+		// For UI to update the latest user message to keep track of whole user history
+		onMessageHistoryUpdate((prevMessages: Message[]) => [
+			...prevMessages,
+			{
+				text: localPlan.trim(),
+				role: "user",
+				timestamp: Date.now(),
+				partial: false,
+			},
+		])
+
+		// Consolidate message history into a single text block, done so for now because of how CLINE handles API requests, does not accept list of message history as input param
 		const consolidatedText = [
 			// Add current plan as the latest user message
-			...messageHistory.map(msg =>
-				`${msg.role.toUpperCase()}: ${msg.text}`
-			),
+			...messageHistory.map((msg) => `${msg.role.toUpperCase()}: ${msg.text}`),
 			// Add the current plan text
-			`USER: ${localPlan.trim()}`
-		].join("\n\n");
+			`USER: ${localPlan.trim()}`,
+		].join("\n\n")
 
 		// Format as a single text block that matches Cline's expected format
 		vscode.postMessage({
@@ -123,12 +124,12 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 					{
 						type: "text",
 						text: `<task>\n${consolidatedText}\n</task>`,
-						isInitialPlan: !hasInitialPlan
-					}
-				]
-			})
+						isInitialPlan: !hasInitialPlan,
+					},
+				],
+			}),
 		})
-	}, [localPlan, messageHistory, hasInitialPlan])
+	}, [localPlan, messageHistory, hasInitialPlan, onMessageHistoryUpdate])
 
 	return (
 		<Container>

@@ -2,8 +2,8 @@ import TelemetryReporter from "@vscode/extension-telemetry"
 
 let reporter: TelemetryReporter | undefined
 
-export function initTelemetry(key: string): TelemetryReporter {
-    reporter = new TelemetryReporter(key)
+export function initTelemetry(): TelemetryReporter {
+    reporter = new TelemetryReporter("InstrumentationKey=3ccb5d83-f371-4d34-9a1d-9d661a8d59a4;IngestionEndpoint=https://southeastasia-1.in.applicationinsights.azure.com/;LiveEndpoint=https://southeastasia.livediagnostics.monitor.azure.com/;ApplicationId=cc6d86ab-27c1-4f8d-98cc-393fcfb20aed")
     return reporter
 }
 

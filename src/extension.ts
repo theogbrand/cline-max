@@ -6,7 +6,6 @@ import { ClineProvider } from "./core/webview/ClineProvider"
 import { createClineAPI } from "./exports"
 import "./utils/path" // necessary to have access to String.prototype.toPosix
 import { DIFF_VIEW_URI_SCHEME } from "./integrations/editor/DiffViewProvider"
-import { initTelemetry, disposeTelemetry } from './services/telemetry/TelemetryService'
 
 /*
 Built using https://github.com/microsoft/vscode-webview-ui-toolkit
@@ -147,8 +146,6 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 	context.subscriptions.push(vscode.window.registerUriHandler({ handleUri }))
 
-	const reporter = initTelemetry("InstrumentationKey=3ccb5d83-f371-4d34-9a1d-9d661a8d59a4;IngestionEndpoint=https://southeastasia-1.in.applicationinsights.azure.com/;LiveEndpoint=https://southeastasia.livediagnostics.monitor.azure.com/;ApplicationId=cc6d86ab-27c1-4f8d-98cc-393fcfb20aed")
-	context.subscriptions.push(reporter)
 
 	return createClineAPI(outputChannel, sidebarProvider)
 }
@@ -156,5 +153,4 @@ export function activate(context: vscode.ExtensionContext) {
 // This method is called when your extension is deactivated
 export function deactivate() {
 	outputChannel.appendLine("Cline extension deactivated")
-	disposeTelemetry()
 }

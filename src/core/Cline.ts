@@ -3211,7 +3211,7 @@ export class Cline {
 					if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
 						await this.providerRef.deref()?.postMessageToWebview({
 							type: "planResponse",
-							text: "Stage 1/2: Initial Analysis\n\n" + firstResult,
+							text: "Stage 1/2: Planning...\n\n" + firstResult,
 							partial: true
 						});
 						lastPartialUpdate = now;
@@ -3244,7 +3244,7 @@ export class Cline {
 					if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
 						await this.providerRef.deref()?.postMessageToWebview({
 							type: "planResponse",
-							text: "Stage 2/2: Implementation Planning\n\n" + finalResult,
+							text: "Stage 2/2: Plan Complete\n\n" + finalResult,
 							partial: true
 						});
 						lastPartialUpdate = now;

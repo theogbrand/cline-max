@@ -182,7 +182,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 													fontSize: '0.8em',
 													opacity: 0.9
 												}}>
-													(streaming...)
+													(loading...)
 												</span>
 											)}
 										</>

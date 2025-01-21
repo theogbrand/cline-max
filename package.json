@@ -93,7 +93,7 @@
 			{
 				"command": "cline-max.openInNewTab",
 				"title": "Open In New Tab",
-				"category": "Cline"
+				"category": "Cline Max"
 			}
 		],
 		"menus": {

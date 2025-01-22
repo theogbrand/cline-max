@@ -70,8 +70,6 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 	useEffect(() => {
 		if (renderPlanEditor) {
 			setShowPlanEditor(true)
-			setPlanMessages([])
-			setPlanValue("")
 		}
 	}, [renderPlanEditor])
 
@@ -746,9 +744,10 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 							onClose={handleTaskCloseButtonClick}
 						/>
 						<div style={{ display: "flex", gap: "10px", marginRight: "10px" }}>
-							<VSCodeButton appearance="secondary" onClick={resetPlanDiscussion}>
+							{/* TODO: Fix state handling so internal plan history of PlanEditor is actually completely cleared */}
+							{/* <VSCodeButton appearance="secondary" onClick={resetPlanDiscussion}>
 								Clear Plan History
-							</VSCodeButton>
+							</VSCodeButton> */}
 							<VSCodeButton appearance="secondary" onClick={() => setShowPlanEditor(!showPlanEditor)}>
 								{showPlanEditor ? "Hide Planner" : "Show Planner"}
 							</VSCodeButton>

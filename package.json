@@ -128,7 +128,7 @@
 		"configuration": {
 			"title": "Cline Max",
 			"properties": {
-				"cline.vsCodeLmModelSelector": {
+				"cline-max.vsCodeLmModelSelector": {
 					"type": "object",
 					"properties": {
 						"vendor": {
@@ -142,7 +142,7 @@
 					},
 					"description": "Settings for VSCode Language Model API"
 				},
-				"cline.mcp.mode": {
+				"cline-max.mcp.mode": {
 					"type": "string",
 					"enum": [
 						"full",
@@ -157,7 +157,7 @@
 					"default": "full",
 					"description": "Controls MCP inclusion in prompts, reduces token usage if you only need access to certain functionality."
 				},
-				"cline.enableCheckpoints": {
+				"cline-max.enableCheckpoints": {
 					"type": "boolean",
 					"default": true,
 					"description": "Enables extension to save checkpoints of workspace throughout the task."

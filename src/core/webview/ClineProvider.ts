@@ -26,7 +26,7 @@ import { openMention } from "../mentions"
 import { getNonce } from "./getNonce"
 import { getUri } from "./getUri"
 import { AutoApprovalSettings, DEFAULT_AUTO_APPROVAL_SETTINGS } from "../../shared/AutoApprovalSettings"
-import { initTelemetry, disposeTelemetry,sendTelemetryEvent } from "../../services/telemetry/TelemetryService"
+import { initTelemetry, disposeTelemetry, sendTelemetryEvent } from "../../services/telemetry/TelemetryService"
 import { BrowserSettings, DEFAULT_BROWSER_SETTINGS } from "../../shared/BrowserSettings"
 import { ChatSettings, DEFAULT_CHAT_SETTINGS } from "../../shared/ChatSettings"
 
@@ -759,15 +759,16 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 						try {
 							sendTelemetryEvent("User generated plan")
 							// Create a new Cline instance or use existing one
-							const { apiConfiguration, customInstructions, autoApprovalSettings } = await this.getState()
-							
+							const { apiConfiguration, customInstructions, autoApprovalSettings, browserSettings, chatSettings } =
+								await this.getState()
+
 							// You can either:
 							// 1. Use existing Cline instance if available
 							if (this.cline) {
 								const response = await this.cline.generatePlan(message.text || "")
 								await this.postMessageToWebview({
 									type: "planResponse",
-									text: response
+									text: response,
 								})
 							} else {
 								// 2. Or create a temporary Cline instance just for plan generation
@@ -775,21 +776,23 @@ export class ClineProvider implements vscode.WebviewViewProvider {
 									this,
 									apiConfiguration,
 									autoApprovalSettings,
-									customInstructions,
+									browserSettings,
+									chatSettings,
+									customInstructions || undefined,
 									"Generate plan",
 									undefined,
-									undefined
+									undefined,
 								)
 								const response = await tempCline.generatePlan(message.text || "")
 								await this.postMessageToWebview({
 									type: "planResponse",
-									text: response
+									text: response,
 								})
 							}
 						} catch (error) {
 							await this.postMessageToWebview({
 								type: "planResponse",
-								text: `Error generating plan: ${error.message}`
+								text: `Error generating plan: ${error.message}`,
 							})
 						}
 						break

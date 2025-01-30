@@ -183,7 +183,6 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 	context.subscriptions.push(vscode.window.registerUriHandler({ handleUri }))
 
-
 	return createClineAPI(outputChannel, sidebarProvider)
 }
 

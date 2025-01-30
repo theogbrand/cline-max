@@ -58,7 +58,7 @@ const AppContent = () => {
 						setShowPlanner(true)
 						setShowAccount(false)
 						break
-			}
+				}
 				break
 		}
 	}, [])

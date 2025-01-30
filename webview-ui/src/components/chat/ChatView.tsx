@@ -765,7 +765,7 @@ const ChatView = ({ isHidden, showAnnouncement, hideAnnouncement, showHistoryVie
 							cacheReads={apiMetrics.totalCacheReads}
 							totalCost={apiMetrics.totalCost}
 							lastApiReqTotalTokens={lastApiReqTotalTokens}
-					onClose={handleTaskCloseButtonClick}
+							onClose={handleTaskCloseButtonClick}
 						/>
 						<div style={{ display: "flex", gap: "10px", marginRight: "10px" }}>
 							{/* TODO: Fix state handling so internal plan history of PlanEditor is actually completely cleared */}

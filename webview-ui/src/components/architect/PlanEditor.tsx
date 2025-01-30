@@ -19,13 +19,7 @@ interface PlanEditorProps {
 	onMessageHistoryUpdate: (updater: (prevMessages: Message[]) => Message[]) => void
 }
 
-const PlanEditor: React.FC<PlanEditorProps> = ({
-	plan,
-	onUpdate,
-	readonly,
-	messageHistory,
-	onMessageHistoryUpdate
-}) => {
+const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messageHistory, onMessageHistoryUpdate }) => {
 	const [localPlan, setLocalPlan] = useState(plan)
 	const [isGenerating, setIsGenerating] = useState(false)
 	const [hasInitialPlan, setHasInitialPlan] = useState(false)
@@ -147,7 +141,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 			{messageHistory.length > 0 && (
 				<ResponseSection>
 					<ResponseHeader>
-						<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+						<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
 							<h3>Plan Discussion</h3>
 							<VSCodeButton
 								appearance="secondary"
@@ -158,56 +152,61 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 									setHasInitialPlan(false)
 									// Clear local plan text
 									setLocalPlan("")
-								}}
-							>
+								}}>
 								Clear History
 							</VSCodeButton>
 						</div>
 					</ResponseHeader>
 					<ResponseContent>
 						{messageHistory.map((msg, idx) => (
-							<div key={idx} style={{
-								marginBottom: 16,
-								opacity: msg.role === "user" ? 0.8 : 1,
-								position: 'relative',
-								paddingRight: msg.partial && msg.role === "assistant" ? '12px' : undefined
-							}}>
-								<div style={{
-									fontWeight: 600,
-									fontSize: "0.9em",
-									marginBottom: 4,
-									color: "var(--vscode-descriptionForeground)",
-									display: 'flex',
-									alignItems: 'center',
-									gap: '8px'
+							<div
+								key={idx}
+								style={{
+									marginBottom: 16,
+									opacity: msg.role === "user" ? 0.8 : 1,
+									position: "relative",
+									paddingRight: msg.partial && msg.role === "assistant" ? "12px" : undefined,
 								}}>
-									{msg.role === "user" ? "You:" : (
+								<div
+									style={{
+										fontWeight: 600,
+										fontSize: "0.9em",
+										marginBottom: 4,
+										color: "var(--vscode-descriptionForeground)",
+										display: "flex",
+										alignItems: "center",
+										gap: "8px",
+									}}>
+									{msg.role === "user" ? (
+										"You:"
+									) : (
 										<>
 											Assistant
 											{msg.partial && (
-												<span style={{
-													color: 'var(--vscode-errorForeground)',
-													fontSize: '0.8em',
-													opacity: 0.9
-												}}>
+												<span
+													style={{
+														color: "var(--vscode-errorForeground)",
+														fontSize: "0.8em",
+														opacity: 0.9,
+													}}>
 													(loading...)
 												</span>
 											)}
 										</>
 									)}
 								</div>
-								<div style={{ position: 'relative' }}>
+								<div style={{ position: "relative" }}>
 									<MarkdownBlock markdown={msg.text} />
 									{msg.partial && msg.role === "assistant" && (
 										<div
 											style={{
-												position: 'absolute',
-												right: '-12px',
+												position: "absolute",
+												right: "-12px",
 												top: 0,
 												bottom: 0,
-												width: '4px',
-												backgroundColor: 'var(--vscode-errorForeground)',
-												animation: 'blink 1s step-end infinite'
+												width: "4px",
+												backgroundColor: "var(--vscode-errorForeground)",
+												animation: "blink 1s step-end infinite",
 											}}
 										/>
 									)}
@@ -238,8 +237,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({
 					<VSCodeButton
 						appearance="secondary"
 						onClick={handleCopyLatestMessage}
-						disabled={messageHistory.length === 0 || isGenerating}
-					>
+						disabled={messageHistory.length === 0 || isGenerating}>
 						{copyFeedback || "Copy Latest Plan"}
 					</VSCodeButton>
 				</Actions>
@@ -257,8 +255,13 @@ const Container = styled.div`
 	box-sizing: border-box;
 
 	@keyframes blink {
-		0%, 100% { border-color: transparent; }
-		50% { border-color: var(--vscode-editor-foreground); }
+		0%,
+		100% {
+			border-color: transparent;
+		}
+		50% {
+			border-color: var(--vscode-editor-foreground);
+		}
 	}
 `
 

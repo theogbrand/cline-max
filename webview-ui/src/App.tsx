@@ -5,6 +5,7 @@ import ChatView from "./components/chat/ChatView"
 import HistoryView from "./components/history/HistoryView"
 import SettingsView from "./components/settings/SettingsView"
 import WelcomeView from "./components/welcome/WelcomeView"
+import AccountView from "./components/account/AccountView"
 import { ExtensionStateContextProvider, useExtensionState } from "./context/ExtensionStateContext"
 import { vscode } from "./utils/vscode"
 import McpView from "./components/mcp/McpView"
@@ -14,6 +15,7 @@ const AppContent = () => {
 	const [showSettings, setShowSettings] = useState(false)
 	const [showHistory, setShowHistory] = useState(false)
 	const [showMcp, setShowMcp] = useState(false)
+	const [showAccount, setShowAccount] = useState(false)
 	const [showAnnouncement, setShowAnnouncement] = useState(false)
 	const [showPlanner, setShowPlanner] = useState(false)
 
@@ -27,24 +29,34 @@ const AppContent = () => {
 						setShowHistory(false)
 						setShowMcp(false)
 						setShowPlanner(false)
+						setShowAccount(false)
 						break
 					case "historyButtonClicked":
 						setShowSettings(false)
 						setShowHistory(true)
 						setShowMcp(false)
 						setShowPlanner(false)
+						setShowAccount(false)
 						break
 					case "mcpButtonClicked":
 						setShowSettings(false)
 						setShowHistory(false)
 						setShowMcp(true)
 						setShowPlanner(false)
+						setShowAccount(false)
+						break
+					case "accountLoginClicked":
+						setShowSettings(false)
+						setShowHistory(false)
+						setShowMcp(false)
+						setShowAccount(true)
 						break
 					case "chatButtonClicked":
 						setShowSettings(false)
 						setShowHistory(false)
 						setShowMcp(false)
 						setShowPlanner(true)
+						setShowAccount(false)
 						break
 			}
 				break
@@ -73,6 +85,7 @@ const AppContent = () => {
 					{showSettings && <SettingsView onDone={() => setShowSettings(false)} />}
 					{showHistory && <HistoryView onDone={() => setShowHistory(false)} />}
 					{showMcp && <McpView onDone={() => setShowMcp(false)} />}
+					{showAccount && <AccountView onDone={() => setShowAccount(false)} />}
 					{/* Do not conditionally load ChatView, it's expensive and there's state we don't want to lose (user input, disableInput, askResponse promise, etc.) */}
 					<ChatView
 						showHistoryView={() => {
@@ -81,7 +94,7 @@ const AppContent = () => {
 							setShowHistory(true)
 						}}
 						renderPlanEditor={showPlanner}
-						isHidden={showSettings || showHistory || showMcp}
+						isHidden={showSettings || showHistory || showMcp || showAccount}
 						showAnnouncement={showAnnouncement}
 						hideAnnouncement={() => {
 							setShowAnnouncement(false)

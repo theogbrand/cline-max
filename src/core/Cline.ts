@@ -70,6 +70,8 @@ type UserContent = Array<
 export class Cline {
 	readonly taskId: string
 	api: ApiHandler
+	private thinkingApi: ApiHandler
+	private executionApi: ApiHandler 
 	private terminalManager: TerminalManager
 	private urlContentFetcher: UrlContentFetcher
 	browserSession: BrowserSession
@@ -125,6 +127,8 @@ export class Cline {
 	) {
 		this.providerRef = new WeakRef(provider)
 		this.api = buildApiHandler(apiConfiguration)
+		this.thinkingApi = buildApiHandler({ ...apiConfiguration, apiModelId: "anthropic/claude-3.5-sonnet" })
+		this.executionApi = this.api
 		this.terminalManager = new TerminalManager()
 		this.urlContentFetcher = new UrlContentFetcher(provider.context)
 		this.browserSession = new BrowserSession(provider.context, browserSettings)
@@ -2811,6 +2815,40 @@ export class Cline {
 		}
 	}
 
+	private async handleThinkingPhase(userContent: UserContent): Promise<string> {
+		const thinkingSystemPrompt = `Act as an expert architect engineer and provide direction to your editor engineer.
+Study the change request and the current code.
+Describe how to modify the code to complete the request.
+The editor engineer will rely solely on your instructions, so make them unambiguous and complete.
+Explain all needed code changes clearly and completely, but concisely.
+Just show the changes needed.
+
+DO NOT show the entire updated function/file/etc!
+
+Always reply to the user in English.`;
+
+		try {
+			let thinkingResponse = ""
+			const stream = this.thinkingApi.createMessage(thinkingSystemPrompt, [
+				{
+					role: "user",
+					content: userContent,
+				},
+			])
+
+			for await (const chunk of stream) {
+				if (chunk.type === "text") {
+					thinkingResponse += chunk.text
+				}
+			}
+
+			return thinkingResponse
+		} catch (error) {
+			console.error("Thinking phase failed:", error)
+			throw error
+		}
+	}
+
 	async recursivelyMakeClineRequests(
 		userContent: UserContent,
 		includeFileDetails: boolean = false,
@@ -2889,6 +2927,19 @@ export class Cline {
 				console.error("Failed to initialize checkpoint tracker:", errorMessage)
 				this.checkpointTrackerErrorMessage = errorMessage // will be displayed right away since we saveClineMessages next which posts state to webview
 			}
+		}
+
+		try {
+			const thinkingResponse = await this.handleThinkingPhase(userContent)
+			userContent = [
+				...userContent,
+				{
+					type: "text",
+					text: `<proposed_solution>\n${thinkingResponse}\n</proposed_solution>\n\nRefer to the proposed solution provided by an expert architect engineer above to complete the task.`,
+				},
+			]
+		} catch (error) {
+			console.error("Error in thinking phase:", error)
 		}
 
 		const [parsedUserContent, environmentDetails] = await this.loadContext(userContent, includeFileDetails)

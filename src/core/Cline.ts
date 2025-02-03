@@ -71,7 +71,7 @@ export class Cline {
 	readonly taskId: string
 	api: ApiHandler
 	private thinkingApi: ApiHandler
-	private executionApi: ApiHandler 
+	private executionApi: ApiHandler
 	private terminalManager: TerminalManager
 	private urlContentFetcher: UrlContentFetcher
 	browserSession: BrowserSession
@@ -2825,7 +2825,7 @@ Just show the changes needed.
 
 DO NOT show the entire updated function/file/etc!
 
-Always reply to the user in English.`;
+Always reply to the user in English.`
 
 		try {
 			let thinkingResponse = ""

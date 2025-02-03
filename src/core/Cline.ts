@@ -3385,9 +3385,57 @@ Always reply to the user in English.`
 
 		if (isInitialPlan) {
 			// Define metaprompts for initial plan
-			const metaprompt1 = `Analyze the user input and generate a clear <purpose>, <steps>, and <dependencies> section:
+			const metaprompt1 = `
+You are an expert software development consultant tasked with creating structured prompt templates for software feature or component development. Your goal is to analyze a given task description and produce a clear, organized template that will guide the development process.
 
-{input}`
+Here is the task description you need to analyze:
+
+<task_description>
+{{input}}
+</task_description>
+
+Please follow these steps to generate the prompt template:
+
+1. Carefully analyze the task description. Take as much time as you need to fully understand the requirements and objectives. Break down the task in <task_breakdown> tags, including:
+   a. List of key components of the task
+   b. Main objectives identified
+   c. Specific requirements noted
+   d. Potential challenges or constraints
+Continue your analysis until you're confident you have a comprehensive understanding of the task.
+
+2. Based on your analysis, create a prompt template with the following structure:
+
+   a. Title: A concise summary of the main feature or component being developed (5-10 words).
+   
+   b. High-Level Objective: 1-2 bullet points stating the overarching goal(s) of the task.
+   
+   c. Mid-Level Objectives: A list of more specific objectives or steps, each as a separate bullet point.
+
+3. Format your output using markdown syntax, as shown in the example below.
+
+4. Ensure that your language is clear, concise, and actionable.
+
+Here's an example of the desired output format:
+
+\`\`\`markdown
+# [Concise Title Summarizing the Feature/Component]
+
+## High-Level Objective
+
+- [Overarching goal 1]
+- [Overarching goal 2 (if needed)]
+
+## Mid-Level Objectives
+
+- [Specific objective or step 1]
+- [Specific objective or step 2]
+- [Specific objective or step 3]
+- [Additional objectives or steps as needed]
+\`\`\`
+
+Remember, this is just an example structure. Your actual output should be tailored to the specific task description provided, with appropriate content for each section.
+
+Begin your response with your task breakdown, and then provide the formatted prompt template based on that analysis.`
 
 			const metaprompt2 = `Generate a detailed <implementation_plan> based on the <purpose>, <steps>, and <dependencies> sections:
 {input}`
@@ -3397,7 +3445,7 @@ Always reply to the user in English.`
 			const systemPrompt2 = "You are a helpful assistant."
 
 			// First API call - Initial Analysis
-			const firstPrompt = metaprompt1.replace("{input}", userTask)
+			const firstPrompt = metaprompt1.replace("{{input}}", userTask)
 			const firstMessages: Anthropic.MessageParam[] = [
 				{
 					role: "user" as const,

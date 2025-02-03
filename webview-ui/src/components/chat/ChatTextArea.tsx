@@ -1068,11 +1068,11 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 						</ModelContainer>
 					</ButtonGroup>
 
-					<SwitchContainer data-testid="mode-switch" disabled={textAreaDisabled} onClick={onModeToggle}>
+					{/* <SwitchContainer data-testid="mode-switch" disabled={textAreaDisabled} onClick={onModeToggle}>
 						<Slider isAct={chatSettings.mode === "act"} isPlan={chatSettings.mode === "plan"} />
 						<SwitchOption isActive={chatSettings.mode === "plan"}>Plan</SwitchOption>
 						<SwitchOption isActive={chatSettings.mode === "act"}>Act</SwitchOption>
-					</SwitchContainer>
+					</SwitchContainer> */}
 				</ControlsContainer>
 			</div>
 		)

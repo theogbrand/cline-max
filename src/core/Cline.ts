@@ -127,7 +127,11 @@ export class Cline {
 	) {
 		this.providerRef = new WeakRef(provider)
 		this.api = buildApiHandler(apiConfiguration)
-		this.thinkingApi = buildApiHandler({ ...apiConfiguration, apiModelId: "anthropic/claude-3.5-sonnet" })
+		this.thinkingApi = buildApiHandler(
+			apiConfiguration.openRouterApiKey
+				? { ...apiConfiguration, apiProvider: "openrouter", apiModelId: "deepseek/deepseek-r1" }
+				: apiConfiguration,
+		)
 		this.executionApi = this.api
 		this.terminalManager = new TerminalManager()
 		this.urlContentFetcher = new UrlContentFetcher(provider.context)

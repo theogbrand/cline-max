@@ -1,8 +1,12 @@
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
 import styled from "styled-components"
 import { vscode } from "../../utils/vscode"
 import MarkdownBlock from "../common/MarkdownBlock"
+import { useClickAway, useWindowSize } from "react-use"
+import ApiOptions, { normalizeApiConfiguration } from "../settings/ApiOptions"
+import { CODE_BLOCK_BG_COLOR } from "../common/CodeBlock"
+import { useExtensionState } from "../../context/ExtensionStateContext"
 
 export type Message = {
 	text: string
@@ -19,11 +23,117 @@ interface PlanEditorProps {
 	onMessageHistoryUpdate: (updater: (prevMessages: Message[]) => Message[]) => void
 }
 
+const ModelContainer = styled.div`
+	position: relative;
+	display: flex;
+	flex: 1;
+	min-width: 0;
+`
+
+const ModelButtonWrapper = styled.div`
+	display: inline-flex;
+	min-width: 0;
+	max-width: 100%;
+`
+
+const ModelDisplayButton = styled.a<{ isActive?: boolean; disabled?: boolean }>`
+	padding: 0px 0px;
+	height: 20px;
+	width: 100%;
+	min-width: 0;
+	cursor: ${(props) => (props.disabled ? "not-allowed" : "pointer")};
+	text-decoration: ${(props) => (props.isActive ? "underline" : "none")};
+	color: ${(props) => (props.isActive ? "var(--vscode-foreground)" : "var(--vscode-descriptionForeground)")};
+	display: flex;
+	align-items: center;
+	font-size: 10px;
+	outline: none;
+	user-select: none;
+	opacity: ${(props) => (props.disabled ? 0.5 : 1)};
+	pointer-events: ${(props) => (props.disabled ? "none" : "auto")};
+
+	&:hover,
+	&:focus {
+		color: ${(props) => (props.disabled ? "var(--vscode-descriptionForeground)" : "var(--vscode-foreground)")};
+		text-decoration: ${(props) => (props.disabled ? "none" : "underline")};
+		outline: none;
+	}
+
+	&:active {
+		color: ${(props) => (props.disabled ? "var(--vscode-descriptionForeground)" : "var(--vscode-foreground)")};
+		text-decoration: ${(props) => (props.disabled ? "none" : "underline")};
+		outline: none;
+	}
+
+	&:focus-visible {
+		outline: none;
+	}
+`
+
+const ModelButtonContent = styled.div`
+	width: 100%;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+`
+
+const ModelSelectorTooltip = styled.div<ModelSelectorTooltipProps>`
+	position: fixed;
+	bottom: calc(100% + 9px);
+	left: 15px;
+	right: 15px;
+	background: ${CODE_BLOCK_BG_COLOR};
+	border: 1px solid var(--vscode-editorGroup-border);
+	padding: 12px;
+	border-radius: 3px;
+	z-index: 1000;
+	max-height: calc(100vh - 100px);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+
+	&::before {
+		content: "";
+		position: fixed;
+		bottom: ${(props) => `calc(100vh - ${props.menuPosition}px - 2px)`};
+		left: 0;
+		right: 0;
+		height: 8px;
+	}
+
+	&::after {
+		content: "";
+		position: fixed;
+		bottom: ${(props) => `calc(100vh - ${props.menuPosition}px)`};
+		right: ${(props) => props.arrowPosition}px;
+		width: 10px;
+		height: 10px;
+		background: ${CODE_BLOCK_BG_COLOR};
+		border-right: 1px solid var(--vscode-editorGroup-border);
+		border-bottom: 1px solid var(--vscode-editorGroup-border);
+		transform: rotate(45deg);
+		z-index: -1;
+	}
+`
+
+interface ModelSelectorTooltipProps {
+	arrowPosition: number
+	menuPosition: number
+}
+
 const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messageHistory, onMessageHistoryUpdate }) => {
+	const { apiConfiguration } = useExtensionState()
 	const [localPlan, setLocalPlan] = useState(plan)
 	const [isGenerating, setIsGenerating] = useState(false)
 	const [hasInitialPlan, setHasInitialPlan] = useState(false)
 	const [copyFeedback, setCopyFeedback] = useState("")
+	const [showModelSelector, setShowModelSelector] = useState(false)
+	const modelSelectorRef = useRef<HTMLDivElement>(null)
+	const buttonRef = useRef<HTMLDivElement>(null)
+	const [arrowPosition, setArrowPosition] = useState(0)
+	const [menuPosition, setMenuPosition] = useState(0)
+	const { width: viewportWidth, height: viewportHeight } = useWindowSize()
+	const prevShowModelSelector = useRef(showModelSelector)
 
 	useEffect(() => {
 		if (!localPlan) {
@@ -132,6 +242,65 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 		}
 	}
 
+	// Add model selector related functions
+	const handleModelButtonClick = () => {
+		setShowModelSelector(!showModelSelector)
+	}
+
+	useClickAway(modelSelectorRef, () => {
+		setShowModelSelector(false)
+	})
+
+	useEffect(() => {
+		if (showModelSelector && buttonRef.current) {
+			const buttonRect = buttonRef.current.getBoundingClientRect()
+			const buttonCenter = buttonRect.left + buttonRect.width / 2
+			const rightPosition = document.documentElement.clientWidth - buttonCenter - 5
+			setArrowPosition(rightPosition)
+			setMenuPosition(buttonRect.top + 1)
+		}
+	}, [showModelSelector, viewportWidth, viewportHeight])
+
+	useEffect(() => {
+		if (!showModelSelector) {
+			const button = buttonRef.current?.querySelector("a")
+			if (button) {
+				button.blur()
+			}
+		}
+	}, [showModelSelector])
+
+	// Add submitApiConfig function
+	const submitApiConfig = useCallback(() => {
+		vscode.postMessage({ type: "apiConfiguration", apiConfiguration })
+	}, [apiConfiguration])
+
+	// Update effect to handle menu close
+	useEffect(() => {
+		if (prevShowModelSelector.current && !showModelSelector) {
+			submitApiConfig()
+		}
+		prevShowModelSelector.current = showModelSelector
+	}, [showModelSelector, submitApiConfig])
+
+	// Get model display name
+	const modelDisplayName = useMemo(() => {
+		const { selectedProvider, selectedModelId } = normalizeApiConfiguration(apiConfiguration)
+		const unknownModel = "unknown"
+		if (!apiConfiguration) return unknownModel
+		switch (selectedProvider) {
+			case "anthropic":
+			case "openrouter":
+				return `${selectedProvider}:${selectedModelId}`
+			case "openai":
+				return `openai-compat:${selectedModelId}`
+			case "vscode-lm":
+				return `vscode-lm:${apiConfiguration.vsCodeLmModelSelector ? `${apiConfiguration.vsCodeLmModelSelector.vendor ?? ""}/${apiConfiguration.vsCodeLmModelSelector.family ?? ""}` : unknownModel}`
+			default:
+				return `${selectedProvider}:${selectedModelId}`
+		}
+	}, [apiConfiguration])
+
 	return (
 		<Container>
 			<Header>
@@ -231,6 +400,33 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 
 			{!readonly && (
 				<Actions>
+					<ModelContainer ref={modelSelectorRef}>
+						<ModelButtonWrapper ref={buttonRef}>
+							<ModelDisplayButton
+								role="button"
+								isActive={showModelSelector}
+								disabled={readonly || isGenerating}
+								onClick={handleModelButtonClick}
+								tabIndex={0}>
+								<ModelButtonContent>{modelDisplayName}</ModelButtonContent>
+							</ModelDisplayButton>
+						</ModelButtonWrapper>
+						{showModelSelector && (
+							<ModelSelectorTooltip
+								arrowPosition={arrowPosition}
+								menuPosition={menuPosition}
+								style={{
+									bottom: `calc(100vh - ${menuPosition}px + 6px)`,
+								}}>
+								<ApiOptions
+									showModelOptions={true}
+									apiErrorMessage={undefined}
+									modelIdErrorMessage={undefined}
+									isPopup={true}
+								/>
+							</ModelSelectorTooltip>
+						)}
+					</ModelContainer>
 					<VSCodeButton appearance="primary" onClick={handleSubmit} disabled={isGenerating || !localPlan.trim()}>
 						{isGenerating ? "Generating..." : messageHistory.length > 0 ? "Iterate Plan" : "Generate Plan"}
 					</VSCodeButton>

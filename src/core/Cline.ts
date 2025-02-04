@@ -3438,8 +3438,8 @@ Remember, this is just an example structure. Your actual output should be tailor
 Begin your response with your task breakdown, and then provide the formatted prompt template based on that analysis.`
 
 			const metaprompt2 = `Generate a detailed <implementation_plan> based on the <purpose>, <steps>, and <dependencies> sections:
-{input}` 
-// now include @files and @functions that are relevant to the task so model can generate low-level objectives with output from first plan and context from context provided in this plan. Perhaps get model to fill in files and functions to change and add to context.
+{input}`
+			// now include @files and @functions that are relevant to the task so model can generate low-level objectives with output from first plan and context from context provided in this plan. Perhaps get model to fill in files and functions to change and add to context.
 
 			// System prompts for each stage
 			const systemPrompt1 = "You are a helpful assistant."

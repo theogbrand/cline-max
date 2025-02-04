@@ -129,7 +129,8 @@ export class Cline {
 		this.api = buildApiHandler(apiConfiguration)
 		this.thinkingApi = buildApiHandler(
 			apiConfiguration.openRouterApiKey
-				? { ...apiConfiguration, apiProvider: "openrouter", apiModelId: "deepseek/deepseek-r1" }
+				? // ? { ...apiConfiguration, apiProvider: "openrouter", apiModelId: "deepseek/deepseek-r1" }
+					{ ...apiConfiguration, apiProvider: "openai-native", apiModelId: "o3-mini" }
 				: apiConfiguration,
 		)
 		this.executionApi = this.api

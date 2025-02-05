@@ -7,6 +7,9 @@ import { useClickAway, useWindowSize } from "react-use"
 import ApiOptions, { normalizeApiConfiguration } from "../settings/ApiOptions"
 import { CODE_BLOCK_BG_COLOR } from "../common/CodeBlock"
 import { useExtensionState } from "../../context/ExtensionStateContext"
+import DynamicTextArea from "react-textarea-autosize"
+import ContextMenu from "../chat/ContextMenu"
+import { shouldShowContextMenu, insertMention, getContextMenuOptions, ContextMenuOptionType } from "../../utils/context-mentions"
 
 export type Message = {
 	text: string
@@ -21,6 +24,11 @@ interface PlanEditorProps {
 	readonly?: boolean
 	messageHistory: Message[]
 	onMessageHistoryUpdate: (updater: (prevMessages: Message[]) => Message[]) => void
+}
+
+interface ModelSelectorTooltipProps {
+	arrowPosition: number
+	menuPosition: number
 }
 
 const ModelContainer = styled.div`
@@ -116,24 +124,142 @@ const ModelSelectorTooltip = styled.div<ModelSelectorTooltipProps>`
 	}
 `
 
-interface ModelSelectorTooltipProps {
-	arrowPosition: number
-	menuPosition: number
-}
+const DarkTextArea = styled(DynamicTextArea)`
+	width: 100%;
+	background-color: var(--vscode-editor-background);
+	color: var(--vscode-editor-foreground);
+	border: 1px solid var(--vscode-input-border);
+	padding: 10px;
+	border-radius: 4px;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 14px;
+	box-sizing: border-box;
+	&:focus {
+		outline: none;
+		border-color: var(--vscode-focusBorder);
+	}
+	&::placeholder {
+		color: var(--vscode-descriptionForeground);
+	}
+`
+
+const Container = styled.div`
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	height: 100vh;
+	box-sizing: border-box;
+
+	@keyframes blink {
+		0%,
+		100% {
+			border-color: transparent;
+		}
+		50% {
+			border-color: var(--vscode-editor-foreground);
+		}
+	}
+`
+
+const Header = styled.div`
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+
+	h2 {
+		margin: 0;
+	}
+
+	span {
+		color: var(--vscode-descriptionForeground);
+		font-size: 12px;
+	}
+`
+
+const Section = styled.div`
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+
+	label {
+		color: var(--vscode-foreground);
+		font-weight: 600;
+	}
+`
+
+const Actions = styled.div`
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 8px;
+`
+
+const ResponseSection = styled.div`
+	border: 1px solid var(--vscode-input-border);
+	border-radius: 4px;
+	overflow: hidden;
+	margin-bottom: 16px;
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+`
+
+const ResponseHeader = styled.div`
+	background: var(--vscode-editor-background);
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--vscode-input-border);
+
+	h3 {
+		margin: 0;
+		font-size: 14px;
+		color: var(--vscode-editor-foreground);
+	}
+`
+
+const ResponseContent = styled.div`
+	padding: 12px;
+	background: var(--vscode-editor-background);
+	color: var(--vscode-editor-foreground);
+	flex: 1;
+	overflow-y: auto;
+	overflow-x: hidden;
+`
 
 const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messageHistory, onMessageHistoryUpdate }) => {
-	const { apiConfiguration } = useExtensionState()
+	const { apiConfiguration, filePaths } = useExtensionState()
 	const [localPlan, setLocalPlan] = useState(plan)
 	const [isGenerating, setIsGenerating] = useState(false)
 	const [hasInitialPlan, setHasInitialPlan] = useState(false)
 	const [copyFeedback, setCopyFeedback] = useState("")
 	const [showModelSelector, setShowModelSelector] = useState(false)
+
+	// State for mention/context menu functionality
+	const [cursorPosition, setCursorPosition] = useState(0)
+	const [showContextMenu, setShowContextMenu] = useState(false)
+	const [searchQuery, setSearchQuery] = useState("")
+	const [selectedMenuIndex, setSelectedMenuIndex] = useState(-1)
+	const textAreaRef = useRef<HTMLTextAreaElement>(null)
+
+	// Refs and state for model selector positioning
 	const modelSelectorRef = useRef<HTMLDivElement>(null)
 	const buttonRef = useRef<HTMLDivElement>(null)
 	const [arrowPosition, setArrowPosition] = useState(0)
 	const [menuPosition, setMenuPosition] = useState(0)
+
 	const { width: viewportWidth, height: viewportHeight } = useWindowSize()
 	const prevShowModelSelector = useRef(showModelSelector)
+
+	const queryItems = useMemo(() => {
+		return [
+			{ type: ContextMenuOptionType.Problems, value: "problems" },
+			...filePaths.map((file: string) => ({
+				type: file.endsWith("/") ? ContextMenuOptionType.Folder : ContextMenuOptionType.File,
+				value: "/" + file,
+			})),
+		]
+	}, [filePaths])
 
 	useEffect(() => {
 		if (!localPlan) {
@@ -149,7 +275,6 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 				onMessageHistoryUpdate((prevMessages) => {
 					const lastMessage = prevMessages[prevMessages.length - 1]
 
-					// If we have a last message that's from assistant, update it
 					if (lastMessage?.role === "assistant") {
 						const updatedMessages = [...prevMessages]
 						updatedMessages[prevMessages.length - 1] = {
@@ -160,7 +285,6 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 						return updatedMessages
 					}
 
-					// Otherwise create a new message
 					return [
 						...prevMessages,
 						{
@@ -172,7 +296,6 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 					]
 				})
 
-				// Only set generating to false when we get the final message
 				if (!message.partial) {
 					setIsGenerating(false)
 					setHasInitialPlan(true)
@@ -183,10 +306,95 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 		return () => window.removeEventListener("message", handleMessage)
 	}, [onMessageHistoryUpdate])
 
-	const handleOverviewChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-		const newValue = e.target.value
-		setLocalPlan(newValue)
-		onUpdate(newValue)
+	const handlePlanInputChange = useCallback(
+		(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+			const newValue = e.target.value
+			setLocalPlan(newValue)
+			onUpdate(newValue)
+			const newCursorPosition = e.target.selectionStart
+			setCursorPosition(newCursorPosition)
+			const shouldShow = shouldShowContextMenu(newValue, newCursorPosition)
+			setShowContextMenu(shouldShow)
+			if (shouldShow) {
+				const lastAtIndex = newValue.lastIndexOf("@", newCursorPosition - 1)
+				const query = newValue.slice(lastAtIndex + 1, newCursorPosition)
+				setSearchQuery(query)
+				if (query.length > 0) {
+					setSelectedMenuIndex(0)
+				} else {
+					setSelectedMenuIndex(3)
+				}
+			} else {
+				setSearchQuery("")
+				setSelectedMenuIndex(-1)
+			}
+		},
+		[onUpdate],
+	)
+
+	const handlePlanMentionSelect = useCallback(
+		(type: ContextMenuOptionType, value?: string) => {
+			if (type === ContextMenuOptionType.NoResults) return
+			setShowContextMenu(false)
+			if (textAreaRef.current) {
+				const currentText = textAreaRef.current.value
+				const { newValue, mentionIndex } = insertMention(currentText, cursorPosition, value || "")
+				setLocalPlan(newValue)
+				onUpdate(newValue)
+				setCursorPosition(mentionIndex)
+				setSearchQuery("")
+			}
+		},
+		[cursorPosition, onUpdate],
+	)
+
+	const handlePlanKeyDown = useCallback(
+		(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+			if (showContextMenu) {
+				if (event.key === "Escape") {
+					setShowContextMenu(false)
+					setSelectedMenuIndex(3)
+					return
+				}
+				if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+					event.preventDefault()
+					setSelectedMenuIndex((prevIndex) => {
+						const options = getContextMenuOptions(searchQuery, null, queryItems)
+						if (options.length === 0) return prevIndex
+						const direction = event.key === "ArrowUp" ? -1 : 1
+						const newIndex = (prevIndex + direction + options.length) % options.length
+						return newIndex
+					})
+					return
+				}
+				if ((event.key === "Enter" || event.key === "Tab") && selectedMenuIndex !== -1) {
+					event.preventDefault()
+					const options = getContextMenuOptions(searchQuery, null, queryItems)
+					const selectedOption = options[selectedMenuIndex]
+					if (selectedOption && selectedOption.type !== ContextMenuOptionType.NoResults) {
+						handlePlanMentionSelect(selectedOption.type, selectedOption.value)
+					}
+					return
+				}
+			}
+		},
+		[showContextMenu, searchQuery, queryItems, selectedMenuIndex, handlePlanMentionSelect],
+	)
+
+	// const handleOverviewChange = useCallback(
+	// 	(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+	// 		const newValue = e.target.value
+	// 		setLocalPlan(newValue)
+	// 		onUpdate(newValue)
+	// 	},
+	// 	[onUpdate],
+	// )
+
+	const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+		if (e.key === "Enter" && !e.shiftKey) {
+			e.preventDefault()
+			handleSubmit()
+		}
 	}
 
 	const handleCopyLatestMessage = useCallback(async () => {
@@ -200,8 +408,6 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 	const handleSubmit = useCallback(() => {
 		if (!localPlan.trim()) return
 		setIsGenerating(true)
-
-		// For UI to update the latest user message to keep track of whole user history
 		onMessageHistoryUpdate((prevMessages: Message[]) => [
 			...prevMessages,
 			{
@@ -211,16 +417,10 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 				partial: false,
 			},
 		])
-
-		// Consolidate message history into a single text block, done so for now because of how CLINE handles API requests, does not accept list of message history as input param
 		const consolidatedText = [
-			// Add current plan as the latest user message
 			...messageHistory.map((msg) => `${msg.role.toUpperCase()}: ${msg.text}`),
-			// Add the current plan text
 			`USER: ${localPlan.trim()}`,
 		].join("\n\n")
-
-		// Format as a single text block that matches Cline's expected format
 		vscode.postMessage({
 			type: "generatePlan",
 			text: JSON.stringify({
@@ -235,14 +435,6 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 		})
 	}, [localPlan, messageHistory, hasInitialPlan, onMessageHistoryUpdate])
 
-	const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-		if (e.key === "Enter" && !e.shiftKey) {
-			e.preventDefault()
-			handleSubmit()
-		}
-	}
-
-	// Add model selector related functions
 	const handleModelButtonClick = () => {
 		setShowModelSelector(!showModelSelector)
 	}
@@ -270,12 +462,10 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 		}
 	}, [showModelSelector])
 
-	// Add submitApiConfig function
 	const submitApiConfig = useCallback(() => {
 		vscode.postMessage({ type: "apiConfiguration", apiConfiguration })
 	}, [apiConfiguration])
 
-	// Update effect to handle menu close
 	useEffect(() => {
 		if (prevShowModelSelector.current && !showModelSelector) {
 			submitApiConfig()
@@ -283,7 +473,6 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 		prevShowModelSelector.current = showModelSelector
 	}, [showModelSelector, submitApiConfig])
 
-	// Get model display name
 	const modelDisplayName = useMemo(() => {
 		const { selectedProvider, selectedModelId } = normalizeApiConfiguration(apiConfiguration)
 		const unknownModel = "unknown"
@@ -291,13 +480,20 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 		switch (selectedProvider) {
 			case "anthropic":
 			case "openrouter":
-				return `${selectedProvider}:${selectedModelId}`
+				return selectedProvider + ":" + selectedModelId
 			case "openai":
-				return `openai-compat:${selectedModelId}`
+				return "openai-compat:" + selectedModelId
 			case "vscode-lm":
-				return `vscode-lm:${apiConfiguration.vsCodeLmModelSelector ? `${apiConfiguration.vsCodeLmModelSelector.vendor ?? ""}/${apiConfiguration.vsCodeLmModelSelector.family ?? ""}` : unknownModel}`
+				return (
+					"vscode-lm:" +
+					(apiConfiguration.vsCodeLmModelSelector
+						? (apiConfiguration.vsCodeLmModelSelector.vendor || "") +
+							"/" +
+							(apiConfiguration.vsCodeLmModelSelector.family || "")
+						: unknownModel)
+				)
 			default:
-				return `${selectedProvider}:${selectedModelId}`
+				return selectedProvider + ":" + selectedModelId
 		}
 	}, [apiConfiguration])
 
@@ -315,11 +511,8 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 							<VSCodeButton
 								appearance="secondary"
 								onClick={() => {
-									// Only clear local plan history
 									onMessageHistoryUpdate(() => [])
-									// Reset local plan state
 									setHasInitialPlan(false)
-									// Clear local plan text
 									setLocalPlan("")
 								}}>
 								Clear History
@@ -388,14 +581,34 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 
 			<Section>
 				<label>Planner</label>
-				<StyledTextArea
+				<DarkTextArea
+					ref={textAreaRef}
 					value={localPlan}
-					onChange={handleOverviewChange}
-					onKeyDown={handleKeyPress}
-					rows={8}
+					onChange={handlePlanInputChange}
+					onKeyDown={(e) => {
+						handlePlanKeyDown(e)
+						if (e.key === "Enter" && !e.shiftKey) {
+							e.preventDefault()
+							handleKeyPress(e)
+						}
+					}}
+					rows={10}
 					readOnly={readonly || isGenerating}
 					placeholder={messageHistory.length > 0 ? "Continue the discussion..." : "Draft your plan here"}
 				/>
+				{showContextMenu && (
+					<div style={{ position: "relative" }}>
+						<ContextMenu
+							onSelect={handlePlanMentionSelect}
+							onMouseDown={() => {}}
+							searchQuery={searchQuery}
+							selectedIndex={selectedMenuIndex}
+							setSelectedIndex={setSelectedMenuIndex}
+							queryItems={queryItems}
+							selectedType={null}
+						/>
+					</div>
+				)}
 			</Section>
 
 			{!readonly && (
@@ -415,9 +628,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 							<ModelSelectorTooltip
 								arrowPosition={arrowPosition}
 								menuPosition={menuPosition}
-								style={{
-									bottom: `calc(100vh - ${menuPosition}px + 6px)`,
-								}}>
+								style={{ bottom: `calc(100vh - ${menuPosition}px + 6px)` }}>
 								<ApiOptions
 									showModelOptions={true}
 									apiErrorMessage={undefined}
@@ -441,125 +652,5 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 		</Container>
 	)
 }
-
-const Container = styled.div`
-	padding: 16px;
-	display: flex;
-	flex-direction: column;
-	gap: 16px;
-	height: 100vh;
-	box-sizing: border-box;
-
-	@keyframes blink {
-		0%,
-		100% {
-			border-color: transparent;
-		}
-		50% {
-			border-color: var(--vscode-editor-foreground);
-		}
-	}
-`
-
-const Header = styled.div`
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-
-	h2 {
-		margin: 0;
-	}
-
-	span {
-		color: var(--vscode-descriptionForeground);
-		font-size: 12px;
-	}
-`
-
-const Section = styled.div`
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-
-	label {
-		color: var(--vscode-foreground);
-		font-weight: 600;
-	}
-`
-
-const StyledTextArea = styled.textarea`
-	background-color: var(--vscode-input-background);
-	border: 1px solid var(--vscode-input-border);
-	border-radius: 2px;
-	padding: 8px;
-	font-family: var(--vscode-font-family);
-	font-size: var(--vscode-editor-font-size);
-	resize: vertical;
-	min-height: 100px;
-	width: 100%;
-	box-sizing: border-box;
-
-	&:focus {
-		outline: none;
-		border-color: var(--vscode-focusBorder);
-	}
-
-	&:read-only {
-		opacity: 0.7;
-		cursor: default;
-	}
-
-	&::placeholder {
-		color: var(--vscode-input-placeholderForeground);
-		opacity: 0.5;
-	}
-
-	/* Ensure text is always visible with high contrast */
-	&,
-	&:focus,
-	&:not(:read-only) {
-		color: var(--vscode-input-foreground);
-		background-color: var(--vscode-input-background);
-	}
-`
-
-const Actions = styled.div`
-	display: flex;
-	justify-content: flex-end;
-	gap: 8px;
-	margin-top: 8px;
-`
-
-const ResponseSection = styled.div`
-	border: 1px solid var(--vscode-input-border);
-	border-radius: 4px;
-	overflow: hidden;
-	margin-bottom: 16px;
-	flex: 1;
-	min-height: 0;
-	display: flex;
-	flex-direction: column;
-`
-
-const ResponseHeader = styled.div`
-	background: var(--vscode-editor-background);
-	padding: 8px 12px;
-	border-bottom: 1px solid var(--vscode-input-border);
-
-	h3 {
-		margin: 0;
-		font-size: 14px;
-		color: var(--vscode-editor-foreground);
-	}
-`
-
-const ResponseContent = styled.div`
-	padding: 12px;
-	background: var(--vscode-editor-background);
-	color: var(--vscode-editor-foreground);
-	flex: 1;
-	overflow-y: auto;
-	overflow-x: hidden;
-`
 
 export default PlanEditor

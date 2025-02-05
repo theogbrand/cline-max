@@ -3379,9 +3379,9 @@ Always reply to the user in English.`
 	}
 
 	async generatePlan(planText: string): Promise<string> {
-		// Parse the messages array from the JSON string
 		const { messages } = JSON.parse(planText)
 		const userTask = messages[0].text // This contains the <task> wrapped text
+		const parsedText = await parseMentions(userTask, cwd, this.urlContentFetcher)
 		const isInitialPlan = messages[0].isInitialPlan
 
 		if (isInitialPlan) {
@@ -3438,7 +3438,8 @@ Remember, this is just an example structure. Your actual output should be tailor
 
 Begin your response with your task breakdown, and then provide the formatted prompt template based on that analysis.`
 
-			const metaprompt2 = `Generate a detailed <implementation_plan> based on the <purpose>, <steps>, and <dependencies> sections:
+			const metaprompt2 = `Generate a detailed low-level plan based on the plan provided below:
+# Plan
 {input}`
 			// now include @files and @functions that are relevant to the task so model can generate low-level objectives with output from first plan and context from context provided in this plan. Perhaps get model to fill in files and functions to change and add to context.
 
@@ -3447,7 +3448,8 @@ Begin your response with your task breakdown, and then provide the formatted pro
 			const systemPrompt2 = "You are a helpful assistant."
 
 			// First API call - Initial Analysis
-			const firstPrompt = metaprompt1.replace("{{input}}", userTask)
+			const firstPrompt = metaprompt1.replace("{{input}}", parsedText)
+			console.log("firstPrompt", firstPrompt)
 			const firstMessages: Anthropic.MessageParam[] = [
 				{
 					role: "user" as const,
@@ -3478,6 +3480,7 @@ Begin your response with your task breakdown, and then provide the formatted pro
 
 			// Second API call - Detailed Planning
 			const secondPrompt = metaprompt2.replace("{input}", firstResult)
+			console.log("secondPrompt", secondPrompt)
 			const secondMessages: Anthropic.MessageParam[] = [
 				{
 					role: "assistant" as const,
@@ -3524,11 +3527,12 @@ Begin your response with your task breakdown, and then provide the formatted pro
 
 			const systemPrompt = "You are a helpful assistant."
 
-			const prompt = continuationPrompt.replace("{input}", userTask)
+			const iterationPrompt = continuationPrompt.replace("{input}", userTask)
+			console.log("iterationPrompt", iterationPrompt)
 			const messages: Anthropic.MessageParam[] = [
 				{
 					role: "user" as const,
-					content: prompt,
+					content: iterationPrompt,
 				},
 			]
 

@@ -126,7 +126,7 @@ const ModelSelectorTooltip = styled.div<ModelSelectorTooltipProps>`
 
 const DarkTextArea = styled(DynamicTextArea)`
 	width: 100%;
-	background-color: var(--vscode-editor-background);
+	background-color: var(--vscode-editor-secondaryBackground);
 	color: var(--vscode-editor-foreground);
 	border: 1px solid var(--vscode-input-border);
 	padding: 10px;
@@ -360,63 +360,6 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 		[cursorPosition, onUpdate],
 	)
 
-	const handlePlanKeyDown = useCallback(
-		(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-			if (showContextMenu) {
-				if (event.key === "Escape") {
-					setSelectedType(null)
-					setSelectedMenuIndex(3)
-					return
-				}
-				if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-					event.preventDefault()
-					setSelectedMenuIndex((prevIndex) => {
-						const options = getContextMenuOptions(searchQuery, selectedType, queryItems)
-						if (options.length === 0) return prevIndex
-						const direction = event.key === "ArrowUp" ? -1 : 1
-						const newIndex = (prevIndex + direction + options.length) % options.length
-						return newIndex
-					})
-					return
-				}
-				if ((event.key === "Enter" || event.key === "Tab") && selectedMenuIndex !== -1) {
-					event.preventDefault()
-					const options = getContextMenuOptions(searchQuery, selectedType, queryItems)
-					const selectedOption = options[selectedMenuIndex]
-					if (selectedOption && selectedOption.type !== ContextMenuOptionType.NoResults) {
-						handlePlanMentionSelect(selectedOption.type, selectedOption.value)
-					}
-					return
-				}
-			}
-		},
-		[showContextMenu, searchQuery, queryItems, selectedMenuIndex, handlePlanMentionSelect, selectedType],
-	)
-
-	// const handleOverviewChange = useCallback(
-	// 	(e: React.ChangeEvent<HTMLTextAreaElement>) => {
-	// 		const newValue = e.target.value
-	// 		setLocalPlan(newValue)
-	// 		onUpdate(newValue)
-	// 	},
-	// 	[onUpdate],
-	// )
-
-	const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-		if (e.key === "Enter" && !e.shiftKey) {
-			e.preventDefault()
-			handleSubmit()
-		}
-	}
-
-	const handleCopyLatestMessage = useCallback(async () => {
-		if (messageHistory.length === 0) return
-		const lastMessage = messageHistory[messageHistory.length - 1]
-		await navigator.clipboard.writeText(lastMessage.text)
-		setCopyFeedback("Copied!")
-		setTimeout(() => setCopyFeedback(""), 2000)
-	}, [messageHistory])
-
 	const handleSubmit = useCallback(() => {
 		if (!localPlan.trim()) return
 		setIsGenerating(true)
@@ -446,6 +389,63 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 			}),
 		})
 	}, [localPlan, messageHistory, hasInitialPlan, onMessageHistoryUpdate])
+
+	const handlePlanKeyDown = useCallback(
+		(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+			const isComposing = event.nativeEvent?.isComposing ?? false
+
+			if (showContextMenu) {
+				if (event.key === "Escape") {
+					setSelectedType(null)
+					setSelectedMenuIndex(3)
+					return
+				}
+				if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+					event.preventDefault()
+					setSelectedMenuIndex((prevIndex) => {
+						const options = getContextMenuOptions(searchQuery, selectedType, queryItems)
+						if (options.length === 0) return prevIndex
+						const direction = event.key === "ArrowUp" ? -1 : 1
+						const newIndex = (prevIndex + direction + options.length) % options.length
+						return newIndex
+					})
+					return
+				}
+				if ((event.key === "Enter" || event.key === "Tab") && selectedMenuIndex !== -1) {
+					event.preventDefault()
+					const options = getContextMenuOptions(searchQuery, selectedType, queryItems)
+					const selectedOption = options[selectedMenuIndex]
+					if (selectedOption && selectedOption.type !== ContextMenuOptionType.NoResults) {
+						handlePlanMentionSelect(selectedOption.type, selectedOption.value)
+					}
+					return
+				}
+			}
+
+			if (event.key === "Enter" && !event.shiftKey && !isComposing) {
+				event.preventDefault()
+				handleSubmit()
+			}
+		},
+		[showContextMenu, searchQuery, queryItems, selectedMenuIndex, handlePlanMentionSelect, selectedType, handleSubmit],
+	)
+
+	// const handleOverviewChange = useCallback(
+	// 	(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+	// 		const newValue = e.target.value
+	// 		setLocalPlan(newValue)
+	// 		onUpdate(newValue)
+	// 	},
+	// 	[onUpdate],
+	// )
+
+	const handleCopyLatestMessage = useCallback(async () => {
+		if (messageHistory.length === 0) return
+		const lastMessage = messageHistory[messageHistory.length - 1]
+		await navigator.clipboard.writeText(lastMessage.text)
+		setCopyFeedback("Copied!")
+		setTimeout(() => setCopyFeedback(""), 2000)
+	}, [messageHistory])
 
 	const handleModelButtonClick = () => {
 		setShowModelSelector(!showModelSelector)
@@ -624,13 +624,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 					ref={textAreaRef}
 					value={localPlan}
 					onChange={handlePlanInputChange}
-					onKeyDown={(e) => {
-						handlePlanKeyDown(e)
-						if (e.key === "Enter" && !e.shiftKey) {
-							e.preventDefault()
-							handleKeyPress(e)
-						}
-					}}
+					onKeyDown={handlePlanKeyDown}
 					rows={10}
 					readOnly={readonly || isGenerating}
 					placeholder={messageHistory.length > 0 ? "Continue the discussion..." : "Draft your plan here"}

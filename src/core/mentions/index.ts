@@ -113,6 +113,109 @@ export async function parseMentions(text: string, cwd: string, urlContentFetcher
 	return parsedText
 }
 
+// use this to return the full files/folders/urls so model can find exact functions that need to be edited in low-level details of plan
+export async function parseMentionsForPlan(
+	text: string,
+	cwd: string,
+	urlContentFetcher: UrlContentFetcher,
+): Promise<[string, { type: string; content: string }]> {
+	const mentions: Set<string> = new Set()
+	let parsedText = text.replace(mentionRegexGlobal, (match, mention) => {
+		mentions.add(mention)
+		if (mention.startsWith("http")) {
+			return `'${mention}' (see below for site content)`
+		} else if (mention.startsWith("/")) {
+			const mentionPath = mention.slice(1) // Remove the leading '/'
+			return mentionPath.endsWith("/")
+				? `'${mentionPath}' (see below for folder content)`
+				: `'${mentionPath}' (see below for file content)`
+		} else if (mention === "problems") {
+			return `Workspace Problems (see below for diagnostics)`
+		}
+		return match
+	})
+
+	const urlMention = Array.from(mentions).find((mention) => mention.startsWith("http"))
+	let launchBrowserError: Error | undefined
+	if (urlMention) {
+		try {
+			await urlContentFetcher.launchBrowser()
+		} catch (error) {
+			launchBrowserError = error
+			vscode.window.showErrorMessage(`Error fetching content for ${urlMention}: ${error.message}`)
+		}
+	}
+
+	const matched_content: { type: string; content: string } = { type: "", content: "" }
+	for (const mention of mentions) {
+		if (mention.startsWith("http")) {
+			let result: string
+			if (launchBrowserError) {
+				result = `Error fetching content: ${launchBrowserError.message}`
+			} else {
+				try {
+					const markdown = await urlContentFetcher.urlToMarkdown(mention)
+					result = markdown
+				} catch (error) {
+					vscode.window.showErrorMessage(`Error fetching content for ${mention}: ${error.message}`)
+					result = `Error fetching content: ${error.message}`
+				}
+			}
+			parsedText += `\n\n<url_content url="${mention}">\n${result}\n</url_content>`
+			matched_content["type"] = "url"
+			matched_content["content"] += `\n\n<url_content url="${mention}">\n${result}\n</url_content>`
+		} else if (mention.startsWith("/")) {
+			const mentionPath = mention.slice(1)
+			try {
+				const content = await getFileOrFolderContent(mentionPath, cwd)
+				if (mention.endsWith("/")) {
+					parsedText += `\n\n<folder_content path="${mentionPath}">\n${content}\n</folder_content>`
+					matched_content["type"] = "folder"
+					matched_content["content"] += `\n\n<folder_content path="${mentionPath}">\n${content}\n</folder_content>`
+				} else {
+					parsedText += `\n\n<file_content path="${mentionPath}">\n${content}\n</file_content>`
+					matched_content["type"] = "file"
+					matched_content["content"] += `\n\n<file_content path="${mentionPath}">\n${content}\n</file_content>`
+				}
+			} catch (error) {
+				if (mention.endsWith("/")) {
+					parsedText += `\n\n<folder_content path="${mentionPath}">\nError fetching content: ${error.message}\n</folder_content>`
+					matched_content["type"] = "error"
+					matched_content["content"] +=
+						`\n\n<folder_content path="${mentionPath}">\nError fetching content: ${error.message}\n</folder_content>`
+				} else {
+					parsedText += `\n\n<file_content path="${mentionPath}">\nError fetching content: ${error.message}\n</file_content>`
+					matched_content["type"] = "error"
+					matched_content["content"] +=
+						`\n\n<file_content path="${mentionPath}">\nError fetching content: ${error.message}\n</file_content>`
+				}
+			}
+		} else if (mention === "problems") {
+			try {
+				const problems = getWorkspaceProblems(cwd)
+				parsedText += `\n\n<workspace_diagnostics>\n${problems}\n</workspace_diagnostics>`
+				matched_content["type"] = "diagnostics"
+				matched_content["content"] += `\n\n<workspace_diagnostics>\n${problems}\n</workspace_diagnostics>`
+			} catch (error) {
+				parsedText += `\n\n<workspace_diagnostics>\nError fetching diagnostics: ${error.message}\n</workspace_diagnostics>`
+				matched_content["type"] = "error"
+				matched_content["content"] +=
+					`\n\n<workspace_diagnostics>\nError fetching diagnostics: ${error.message}\n</workspace_diagnostics>`
+			}
+		}
+	}
+
+	if (urlMention) {
+		try {
+			await urlContentFetcher.closeBrowser()
+		} catch (error) {
+			console.error(`Error closing browser: ${error.message}`)
+		}
+	}
+
+	return [parsedText, matched_content]
+}
+
 async function getFileOrFolderContent(mentionPath: string, cwd: string): Promise<string> {
 	const absPath = path.resolve(cwd, mentionPath)
 

@@ -50,7 +50,7 @@ import { arePathsEqual, getReadablePath } from "../utils/path"
 import { fixModelHtmlEscaping, removeInvalidChars } from "../utils/string"
 import { AssistantMessageContent, parseAssistantMessage, ToolParamName, ToolUseName } from "./assistant-message"
 import { constructNewFileContent } from "./assistant-message/diff"
-import { parseMentions } from "./mentions"
+import { parseMentions, parseMentionsForPlan } from "./mentions"
 import { formatResponse } from "./prompts/responses"
 import { ClineProvider, GlobalFileNames } from "./webview/ClineProvider"
 import { OpenRouterHandler } from "../api/providers/openrouter"
@@ -2934,18 +2934,19 @@ Always reply to the user in English.`
 			}
 		}
 
-		try {
-			const thinkingResponse = await this.handleThinkingPhase(userContent)
-			userContent = [
-				...userContent,
-				{
-					type: "text",
-					text: `<proposed_solution>\n${thinkingResponse}\n</proposed_solution>\n\nRefer to the proposed solution provided by an expert architect engineer above to complete the task.`,
-				},
-			]
-		} catch (error) {
-			console.error("Error in thinking phase:", error)
-		}
+		// Uncomment this if want the proposed solution in the coding execution agent
+		// try {
+		// 	const thinkingResponse = await this.handleThinkingPhase(userContent)
+		// 	userContent = [
+		// 		...userContent,
+		// 		{
+		// 			type: "text",
+		// 			text: `<proposed_solution>\n${thinkingResponse}\n</proposed_solution>\n\nRefer to the proposed solution provided by an expert architect engineer above to complete the task.`,
+		// 		},
+		// 	]
+		// } catch (error) {
+		// 	console.error("Error in thinking phase:", error)
+		// }
 
 		const [parsedUserContent, environmentDetails] = await this.loadContext(userContent, includeFileDetails)
 		userContent = parsedUserContent
@@ -3380,12 +3381,12 @@ Always reply to the user in English.`
 
 	async generatePlan(planText: string): Promise<string> {
 		const { messages } = JSON.parse(planText)
-		const userTask = messages[0].text // This contains the <task> wrapped text
-		const parsedText = await parseMentions(userTask, cwd, this.urlContentFetcher)
+		const userTask = messages[0].text // This contains the <task> wrapped text, TODO: consider adding this in metaprompt instead of in the first message
+		const [parsedText, matched_content] = await parseMentionsForPlan(userTask, cwd, this.urlContentFetcher)
 		const isInitialPlan = messages[0].isInitialPlan
 
 		if (isInitialPlan) {
-			// Define metaprompts for initial plan
+			// TODO: Add examples for generating plan
 			const metaprompt1 = `
 You are an expert software development consultant tasked with creating structured prompt templates for software feature or component development. Your goal is to analyze a given task description and produce a clear, organized template that will guide the development process.
 
@@ -3397,7 +3398,7 @@ Here is the task description you need to analyze:
 
 Please follow these steps to generate the prompt template:
 
-1. Carefully analyze the task description. Take as much time as you need to fully understand the requirements and objectives. Break down the task in <task_breakdown> tags, including:
+1. Carefully analyze the task description. Take as much time as you need to fully understand the requirements and objectives. Break down the task, including:
    a. List of key components of the task
    b. Main objectives identified
    c. Specific requirements noted
@@ -3438,18 +3439,14 @@ Remember, this is just an example structure. Your actual output should be tailor
 
 Begin your response with your task breakdown, and then provide the formatted prompt template based on that analysis.`
 
-			const metaprompt2 = `Generate a detailed low-level plan based on the plan provided below:
-# Plan
-{input}`
 			// now include @files and @functions that are relevant to the task so model can generate low-level objectives with output from first plan and context from context provided in this plan. Perhaps get model to fill in files and functions to change and add to context.
 
 			// System prompts for each stage
 			const systemPrompt1 = "You are a helpful assistant."
-			const systemPrompt2 = "You are a helpful assistant."
 
 			// First API call - Initial Analysis
 			const firstPrompt = metaprompt1.replace("{{input}}", parsedText)
-			console.log("firstPrompt", firstPrompt)
+			console.log("firstPrompt", JSON.stringify(firstPrompt, null, 2))
 			const firstMessages: Anthropic.MessageParam[] = [
 				{
 					role: "user" as const,
@@ -3470,7 +3467,7 @@ Begin your response with your task breakdown, and then provide the formatted pro
 					if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
 						await this.providerRef.deref()?.postMessageToWebview({
 							type: "planResponse",
-							text: "Stage 1/2: Planning\n\n" + firstResult,
+							text: "Stage 1/2: Analyzing Task and Gathering Information\n\n" + firstResult,
 							partial: true,
 						})
 						lastPartialUpdate = now
@@ -3478,9 +3475,86 @@ Begin your response with your task breakdown, and then provide the formatted pro
 				}
 			}
 
+			const systemPrompt2 = "You are a helpful assistant."
+
+			const metaprompt2 = `You are an experienced software architect tasked with creating a detailed, code-focused implementation plan based on high-level and mid-level objectives. Your goal is to break down these objectives into specific, actionable steps that ensure all aspects of the plan are addressed, with a particular focus on generating precise code diffs to accomplish each high-level objective.
+
+First, carefully review the following code context and plan:
+
+<code_context_files>
+{{CODE_CONTEXT_FILES}}
+</code_context_files>
+
+<plan>
+{{PLAN}}
+</plan>
+
+Now, follow these steps to create a detailed low-level implementation plan:
+
+1. Analyze the plan and code context:
+   a. List all files mentioned in the code context.
+   b. List all high-level objectives.
+   c. For each high-level objective, list its corresponding mid-level objectives.
+   d. For each mid-level objective:
+      - Brainstorm potential code-related tasks, focusing on generating precise code diffs. Prioritize simple, direct implementations following Occam's Razor.
+      - Write potential code snippets or pseudo-code to illustrate the implementation.
+      - Identify which files from step (a) are likely to be affected.
+   e. Identify any dependencies between objectives.
+   f. Consider potential challenges or risks for each mid-level objective.
+   g. For each potential challenge or risk, brainstorm possible mitigation strategies.
+
+   It's OK for this section to be quite long, as thorough analysis will lead to a better implementation plan.
+
+2. Create a detailed low-level plan inside <implementation_plan> tags:
+   Based on your analysis, create a detailed plan inside <implementation_plan> tags using the following Markdown format:
+
+\`\`\`markdown
+# Detailed Low-Level Implementation Plan
+
+## High-Level Objective 1: [High-level objective text]
+
+### Mid-Level Objective 1.1: [Mid-level objective text]
+1.1.1. [First detailed code-related step]
+1.1.2. [Second detailed code-related step]
+...
+
+### Mid-Level Objective 1.2: [Mid-level objective text]
+1.2.1. [First detailed code-related step]
+1.2.2. [Second detailed code-related step]
+...
+
+## High-Level Objective 2: [High-level objective text]
+
+### Mid-Level Objective 2.1: [Mid-level objective text]
+2.1.1. [First detailed code-related step]
+2.1.2. [Second detailed code-related step]
+...
+
+[Continue for all high-level and mid-level objectives]
+\`\`\`
+
+Ensure that your detailed low-level plan adheres to the following guidelines:
+- Address all objectives from the original plan.
+- Focus on code-specific tasks and precise instructions for generating code diffs.
+- Use clear, concise language for each step, avoiding ambiguity.
+- Number each step sequentially within each mid-level objective.
+- Organize steps in a logical sequence, considering dependencies between objectives.
+- If any objectives seem vague, make reasonable assumptions based on common software development practices and note them in your plan.
+
+3. Review and finalize:
+   After completing the detailed low-level plan, review it to ensure:
+   - All high-level and mid-level objectives are addressed.
+   - Each step is directly related to code implementation or modification.
+   - The plan follows Occam's Razor, prioritizing simple, direct implementations.
+   - No objectives have been overlooked.
+   - All files identified in step 1(a) have been considered and addressed where relevant.
+
+Present your final detailed low-level implementation plan inside <implementation_plan> tags using the Markdown format specified above.`
+
 			// Second API call - Detailed Planning
-			const secondPrompt = metaprompt2.replace("{input}", firstResult)
-			console.log("secondPrompt", secondPrompt)
+			const secondPrompt = metaprompt2.replace("{{PLAN}}", firstResult)
+			const secondPromptWithContext = secondPrompt.replace("{{CODE_CONTEXT_FILES}}", matched_content.content)
+			console.log("secondPromptWithContext", JSON.stringify(secondPromptWithContext, null, 2))
 			const secondMessages: Anthropic.MessageParam[] = [
 				{
 					role: "assistant" as const,
@@ -3488,7 +3562,7 @@ Begin your response with your task breakdown, and then provide the formatted pro
 				},
 				{
 					role: "user" as const,
-					content: secondPrompt,
+					content: secondPromptWithContext,
 				},
 			]
 
@@ -3504,7 +3578,7 @@ Begin your response with your task breakdown, and then provide the formatted pro
 					if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
 						await this.providerRef.deref()?.postMessageToWebview({
 							type: "planResponse",
-							text: "Stage 2/2: Plan Complete\n\n" + finalResult,
+							text: "Stage 2/2: Implementation Planning\n\n" + finalResult,
 							partial: true,
 						})
 						lastPartialUpdate = now
@@ -3522,12 +3596,53 @@ Begin your response with your task breakdown, and then provide the formatted pro
 			return finalResult
 		} else {
 			// For subsequent messages, use a single prompt
-			const continuationPrompt = `Iterate on the plan based on the user feedback:
-{input}`
+			const continuationPrompt = `You are an AI assistant specializing in project plan refinement. Your task is to analyze an original project plan and user feedback, then provide a revised plan that incorporates the necessary changes.
+
+Here is the conversation history containing the original task and user feedback:
+<conversation_history>
+{{CONVERSATION_HISTORY}}
+</conversation_history>
+
+Please follow these steps to revise the plan:
+
+1. Analyze the user's feedback in the conversation history carefully. Consider how it changes the scope, requirements, or direction of the original task.
+
+2. Identify the modifications needed to accommodate this feedback.
+
+3. Revise the plan to incorporate the user's feedback. Ensure you:
+   - Address all aspects of the user's feedback
+   - Modify existing steps as necessary
+   - Add new steps if required
+   - Remove any steps that are no longer relevant
+
+4. Present your revised plan in Markdown format, retaining the original format of the input.
+
+Before presenting your final revised plan, take as much time as you need to thoroughly analyze the user's feedback. In this analysis:
+
+1. Break down the user feedback into key points.
+2. For each key point, identify its implications for the project plan.
+3. Compare the original task with the user feedback, highlighting any discrepancies or new requirements.
+4. List potential modifications needed for each step of the original plan.
+5. Consider any potential challenges or conflicts that might arise from implementing the feedback.
+
+This analysis will help ensure a thorough interpretation of the feedback and its implications for the project plan.
+
+After your analysis, present your revised plan inside <revised_plan> tags using the following format:
+
+\`\`\`markdown
+## Revised Plan
+
+1. [First step]
+2. [Second step]
+3. [Third step]
+...
+\`\`\`
+
+Remember to be thorough in your revision. Your goal is to provide an updated plan that fully incorporates the user's feedback while maintaining the overall objective of the task.`
 
 			const systemPrompt = "You are a helpful assistant."
 
-			const iterationPrompt = continuationPrompt.replace("{input}", userTask)
+			const iterationPrompt = continuationPrompt.replace("{{CONVERSATION_HISTORY}}", userTask)
 			console.log("iterationPrompt", iterationPrompt)
 			const messages: Anthropic.MessageParam[] = [
 				{

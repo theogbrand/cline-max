@@ -601,7 +601,6 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 				<label>Planner</label>
 				<div
 					style={{
-						padding: "10px 15px",
 						opacity: 1,
 						position: "relative",
 						display: "flex",
@@ -628,6 +627,14 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 					rows={10}
 					readOnly={readonly || isGenerating}
 					placeholder={messageHistory.length > 0 ? "Continue the discussion..." : "Draft your plan here"}
+					style={{
+						width: "100%",
+						backgroundColor: "var(--vscode-input-background)",
+						color: "var(--vscode-input-foreground)",
+						borderRadius: 2,
+						fontFamily: "var(--vscode-font-family)",
+						fontSize: "var(--vscode-editor-font-size)",
+					}}
 				/>
 			</Section>
 

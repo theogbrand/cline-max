@@ -240,6 +240,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 	const [showContextMenu, setShowContextMenu] = useState(false)
 	const [searchQuery, setSearchQuery] = useState("")
 	const [selectedMenuIndex, setSelectedMenuIndex] = useState(-1)
+	const [selectedType, setSelectedType] = useState<ContextMenuOptionType | null>(null)
 	const textAreaRef = useRef<HTMLTextAreaElement>(null)
 
 	// Refs and state for model selector positioning
@@ -335,7 +336,18 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 	const handlePlanMentionSelect = useCallback(
 		(type: ContextMenuOptionType, value?: string) => {
 			if (type === ContextMenuOptionType.NoResults) return
+
+			if (type === ContextMenuOptionType.File || type === ContextMenuOptionType.Folder) {
+				if (!value) {
+					setSelectedType(type)
+					setSearchQuery("")
+					setSelectedMenuIndex(0)
+					return
+				}
+			}
+
 			setShowContextMenu(false)
+			setSelectedType(null)
 			if (textAreaRef.current) {
 				const currentText = textAreaRef.current.value
 				const { newValue, mentionIndex } = insertMention(currentText, cursorPosition, value || "")
@@ -352,14 +364,14 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 		(event: React.KeyboardEvent<HTMLTextAreaElement>) => {
 			if (showContextMenu) {
 				if (event.key === "Escape") {
-					setShowContextMenu(false)
+					setSelectedType(null)
 					setSelectedMenuIndex(3)
 					return
 				}
 				if (event.key === "ArrowUp" || event.key === "ArrowDown") {
 					event.preventDefault()
 					setSelectedMenuIndex((prevIndex) => {
-						const options = getContextMenuOptions(searchQuery, null, queryItems)
+						const options = getContextMenuOptions(searchQuery, selectedType, queryItems)
 						if (options.length === 0) return prevIndex
 						const direction = event.key === "ArrowUp" ? -1 : 1
 						const newIndex = (prevIndex + direction + options.length) % options.length
@@ -369,7 +381,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 				}
 				if ((event.key === "Enter" || event.key === "Tab") && selectedMenuIndex !== -1) {
 					event.preventDefault()
-					const options = getContextMenuOptions(searchQuery, null, queryItems)
+					const options = getContextMenuOptions(searchQuery, selectedType, queryItems)
 					const selectedOption = options[selectedMenuIndex]
 					if (selectedOption && selectedOption.type !== ContextMenuOptionType.NoResults) {
 						handlePlanMentionSelect(selectedOption.type, selectedOption.value)
@@ -378,7 +390,7 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 				}
 			}
 		},
-		[showContextMenu, searchQuery, queryItems, selectedMenuIndex, handlePlanMentionSelect],
+		[showContextMenu, searchQuery, queryItems, selectedMenuIndex, handlePlanMentionSelect, selectedType],
 	)
 
 	// const handleOverviewChange = useCallback(
@@ -452,6 +464,12 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 			setMenuPosition(buttonRect.top + 1)
 		}
 	}, [showModelSelector, viewportWidth, viewportHeight])
+
+	useEffect(() => {
+		if (!showContextMenu) {
+			setSelectedType(null)
+		}
+	}, [showContextMenu])
 
 	useEffect(() => {
 		if (!showModelSelector) {
@@ -581,6 +599,27 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 
 			<Section>
 				<label>Planner</label>
+				<div
+					style={{
+						padding: "10px 15px",
+						opacity: 1,
+						position: "relative",
+						display: "flex",
+					}}>
+					{showContextMenu && (
+						<div>
+							<ContextMenu
+								onSelect={handlePlanMentionSelect}
+								onMouseDown={() => {}}
+								searchQuery={searchQuery}
+								selectedIndex={selectedMenuIndex}
+								setSelectedIndex={setSelectedMenuIndex}
+								queryItems={queryItems}
+								selectedType={selectedType}
+							/>
+						</div>
+					)}
+				</div>
 				<DarkTextArea
 					ref={textAreaRef}
 					value={localPlan}
@@ -596,19 +635,6 @@ const PlanEditor: React.FC<PlanEditorProps> = ({ plan, onUpdate, readonly, messa
 					readOnly={readonly || isGenerating}
 					placeholder={messageHistory.length > 0 ? "Continue the discussion..." : "Draft your plan here"}
 				/>
-				{showContextMenu && (
-					<div style={{ position: "relative" }}>
-						<ContextMenu
-							onSelect={handlePlanMentionSelect}
-							onMouseDown={() => {}}
-							searchQuery={searchQuery}
-							selectedIndex={selectedMenuIndex}
-							setSelectedIndex={setSelectedMenuIndex}
-							queryItems={queryItems}
-							selectedType={null}
-						/>
-					</div>
-				)}
 			</Section>
 
 			{!readonly && (

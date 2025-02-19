@@ -2,16 +2,18 @@ import { Anthropic } from "@anthropic-ai/sdk"
 import cloneDeep from "clone-deep"
 import delay from "delay"
 import fs from "fs/promises"
+import getFolderSize from "get-folder-size"
 import os from "os"
 import pWaitFor from "p-wait-for"
 import * as path from "path"
 import { serializeError } from "serialize-error"
 import * as vscode from "vscode"
 import { ApiHandler, buildApiHandler } from "../api"
-import { ApiStream } from "../api/transform/stream"
+import CheckpointTracker from "../integrations/checkpoints/CheckpointTracker"
 import { DIFF_VIEW_URI_SCHEME, DiffViewProvider } from "../integrations/editor/DiffViewProvider"
 import { findToolName, formatContentBlockToMarkdown } from "../integrations/misc/export-markdown"
 import { extractTextFromFile } from "../integrations/misc/extract-text"
+import { showSystemNotification } from "../integrations/notifications"
 import { TerminalManager } from "../integrations/terminal/TerminalManager"
 import { BrowserSession } from "../services/browser/BrowserSession"
 import { UrlContentFetcher } from "../services/browser/UrlContentFetcher"
@@ -21,6 +23,8 @@ import { parseSourceCodeForDefinitionsTopLevel } from "../services/tree-sitter"
 import { ApiConfiguration } from "../shared/api"
 import { findLast, findLastIndex } from "../shared/array"
 import { AutoApprovalSettings } from "../shared/AutoApprovalSettings"
+import { BrowserSettings } from "../shared/BrowserSettings"
+import { ChatSettings } from "../shared/ChatSettings"
 import { combineApiRequests } from "../shared/combineApiRequests"
 import { combineCommandSequences, COMMAND_REQ_APP_STRING } from "../shared/combineCommandSequences"
 import {
@@ -43,19 +47,18 @@ import { ClineAskResponse, ClineCheckpointRestore } from "../shared/WebviewMessa
 import { calculateApiCost } from "../utils/cost"
 import { fileExistsAtPath } from "../utils/fs"
 import { arePathsEqual, getReadablePath } from "../utils/path"
+import { fixModelHtmlEscaping, removeInvalidChars } from "../utils/string"
 import { AssistantMessageContent, parseAssistantMessage, ToolParamName, ToolUseName } from "./assistant-message"
 import { constructNewFileContent } from "./assistant-message/diff"
-import { parseMentions } from "./mentions"
+import { parseMentions, parseMentionsForPlan } from "./mentions"
 import { formatResponse } from "./prompts/responses"
-import { addUserInstructions, SYSTEM_PROMPT } from "./prompts/system"
-import { getNextTruncationRange, getTruncatedMessages } from "./sliding-window"
 import { ClineProvider, GlobalFileNames } from "./webview/ClineProvider"
-import { showSystemNotification } from "../integrations/notifications"
-import { removeInvalidChars } from "../utils/string"
-import { fixModelHtmlEscaping } from "../utils/string"
+import { OpenRouterHandler } from "../api/providers/openrouter"
+import { getNextTruncationRange, getTruncatedMessages } from "./sliding-window"
+import { SYSTEM_PROMPT } from "./prompts/system"
+import { addUserInstructions } from "./prompts/system"
 import { OpenAiHandler } from "../api/providers/openai"
-import CheckpointTracker from "../integrations/checkpoints/CheckpointTracker"
-import getFolderSize from "get-folder-size"
+import { ApiStream } from "../api/transform/stream"
 
 const cwd = vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath).at(0) ?? path.join(os.homedir(), "Desktop") // may or may not exist but fs checking existence would immediately ask for permission which would be bad UX, need to come up with a better solution
 
@@ -67,12 +70,16 @@ type UserContent = Array<
 export class Cline {
 	readonly taskId: string
 	api: ApiHandler
+	private thinkingApi: ApiHandler
+	private executionApi: ApiHandler
 	private terminalManager: TerminalManager
 	private urlContentFetcher: UrlContentFetcher
-	private browserSession: BrowserSession
+	browserSession: BrowserSession
 	private didEditFile: boolean = false
 	customInstructions?: string
 	autoApprovalSettings: AutoApprovalSettings
+	private browserSettings: BrowserSettings
+	private chatSettings: ChatSettings
 	apiConversationHistory: Anthropic.MessageParam[] = []
 	clineMessages: ClineMessage[] = []
 	private askResponse?: ClineAskResponse
@@ -90,8 +97,11 @@ export class Cline {
 	checkpointTrackerErrorMessage?: string
 	conversationHistoryDeletedRange?: [number, number]
 	isInitialized = false
+	isAwaitingPlanResponse = false
+	didRespondToPlanAskBySwitchingMode = false
 
 	// streaming
+	isWaitingForFirstChunk = false
 	isStreaming = false
 	private currentStreamingContentIndex = 0
 	private assistantMessageContent: AssistantMessageContent[] = []
@@ -102,11 +112,14 @@ export class Cline {
 	private didRejectTool = false
 	private didAlreadyUseTool = false
 	private didCompleteReadingStream = false
+	private didAutomaticallyRetryFailedApiRequest = false
 
 	constructor(
 		provider: ClineProvider,
 		apiConfiguration: ApiConfiguration,
 		autoApprovalSettings: AutoApprovalSettings,
+		browserSettings: BrowserSettings,
+		chatSettings: ChatSettings,
 		customInstructions?: string,
 		task?: string,
 		images?: string[],
@@ -114,12 +127,21 @@ export class Cline {
 	) {
 		this.providerRef = new WeakRef(provider)
 		this.api = buildApiHandler(apiConfiguration)
+		this.thinkingApi = buildApiHandler(
+			apiConfiguration.openRouterApiKey
+				? // ? { ...apiConfiguration, apiProvider: "openrouter", apiModelId: "deepseek/deepseek-r1" }
+					{ ...apiConfiguration, apiProvider: "openai-native", apiModelId: "o3-mini" }
+				: apiConfiguration,
+		)
+		this.executionApi = this.api
 		this.terminalManager = new TerminalManager()
 		this.urlContentFetcher = new UrlContentFetcher(provider.context)
-		this.browserSession = new BrowserSession(provider.context)
+		this.browserSession = new BrowserSession(provider.context, browserSettings)
 		this.diffViewProvider = new DiffViewProvider(cwd)
 		this.customInstructions = customInstructions
 		this.autoApprovalSettings = autoApprovalSettings
+		this.browserSettings = browserSettings
+		this.chatSettings = chatSettings
 		if (historyItem) {
 			this.taskId = historyItem.id
 			this.conversationHistoryDeletedRange = historyItem.conversationHistoryDeletedRange
@@ -130,6 +152,15 @@ export class Cline {
 		} else {
 			throw new Error("Either historyItem or task/images must be provided")
 		}
+	}
+
+	updateBrowserSettings(browserSettings: BrowserSettings) {
+		this.browserSettings = browserSettings
+		this.browserSession.browserSettings = browserSettings
+	}
+
+	updateChatSettings(chatSettings: ChatSettings) {
+		this.chatSettings = chatSettings
 	}
 
 	// Storing task to disk for history
@@ -971,14 +1002,20 @@ export class Cline {
 		newUserContent.push({
 			type: "text",
 			text:
-				`[TASK RESUMPTION] This task was interrupted ${agoText}. It may or may not be complete, so please reassess the task context. Be aware that the project state may have changed since then. The current working directory is now '${cwd.toPosix()}'. If the task has not been completed, retry the last step before interruption and proceed with completing the task.\n\nNote: If you previously attempted a tool use that the user did not provide a result for, you should assume the tool use was not successful and assess whether you should retry. If the last tool was a browser_action, the browser has been closed and you must launch a new browser if needed.${
+				`[TASK RESUMPTION] ${
+					this.chatSettings?.mode === "plan"
+						? `This task was interrupted ${agoText}. The conversation may have been incomplete. Be aware that the project state may have changed since then. The current working directory is now '${cwd.toPosix()}'.\n\nNote: If you previously attempted a tool use that the user did not provide a result for, you should assume the tool use was not successful. However you are in PLAN MODE, so rather than continuing the task, you must respond to the user's message.`
+						: `This task was interrupted ${agoText}. It may or may not be complete, so please reassess the task context. Be aware that the project state may have changed since then. The current working directory is now '${cwd.toPosix()}'. If the task has not been completed, retry the last step before interruption and proceed with completing the task.\n\nNote: If you previously attempted a tool use that the user did not provide a result for, you should assume the tool use was not successful and assess whether you should retry. If the last tool was a browser_action, the browser has been closed and you must launch a new browser if needed.`
+				}${
 					wasRecent
 						? "\n\nIMPORTANT: If the last tool use was a replace_in_file or write_to_file that was interrupted, the file was reverted back to its original state before the interrupted edit, and you do NOT need to re-read the file as you already have its up-to-date contents."
 						: ""
 				}` +
 				(responseText
-					? `\n\nNew instructions for task continuation:\n<user_message>\n${responseText}\n</user_message>`
-					: ""),
+					? `\n\n${this.chatSettings?.mode === "plan" ? "New message to respond to with plan_mode_response tool (be sure to provide your response in the <response> parameter)" : "New instructions for task continuation"}:\n<user_message>\n${responseText}\n</user_message>`
+					: this.chatSettings.mode === "plan"
+						? "(The user did not provide a new message. Consider asking them how they'd like you to proceed, or to switch to Act mode to continue with the task.)"
+						: ""),
 		})
 
 		if (responseImages && responseImages.length > 0) {
@@ -1180,7 +1217,13 @@ export class Cline {
 			throw new Error("MCP hub not available")
 		}
 
-		let systemPrompt = await SYSTEM_PROMPT(cwd, this.api.getModel().info.supportsComputerUse ?? false, mcpHub)
+		let systemPrompt = await SYSTEM_PROMPT(
+			cwd,
+			this.api.getModel().info.supportsComputerUse ?? false,
+			mcpHub,
+			this.browserSettings,
+		)
+
 		let settingsCustomInstructions = this.customInstructions?.trim()
 		const clineRulesFilePath = path.resolve(cwd, GlobalFileNames.clineRules)
 		let clineRulesFileInstructions: string | undefined
@@ -1228,10 +1271,16 @@ export class Cline {
 
 				// This is the most reliable way to know when we're close to hitting the context window.
 				if (totalTokens >= maxAllowedSize) {
+					// Since the user may switch between models with different context windows, truncating half may not be enough (ie if switching from claude 200k to deepseek 64k, half truncation will only remove 100k tokens, but we need to remove much more)
+					// So if totalTokens/2 is greater than maxAllowedSize, we truncate 3/4 instead of 1/2
+					// FIXME: truncating the conversation in a way that is optimal for prompt caching AND takes into account multi-context window complexity is something we need to improve
+					const keep = totalTokens / 2 > maxAllowedSize ? "quarter" : "half"
+
 					// NOTE: it's okay that we overwriteConversationHistory in resume task since we're only ever removing the last user message and not anything in the middle which would affect this range
 					this.conversationHistoryDeletedRange = getNextTruncationRange(
 						this.apiConversationHistory,
 						this.conversationHistoryDeletedRange,
+						keep,
 					)
 					await this.saveClineMessages() // saves task history item which we use to keep track of conversation history deleted range
 					// await this.overwriteApiConversationHistory(truncatedMessages)
@@ -1245,21 +1294,35 @@ export class Cline {
 			this.conversationHistoryDeletedRange,
 		)
 
-		const stream = this.api.createMessage(systemPrompt, truncatedConversationHistory)
+		let stream = this.api.createMessage(systemPrompt, truncatedConversationHistory)
+
 		const iterator = stream[Symbol.asyncIterator]()
 
 		try {
 			// awaiting first chunk to see if it will throw an error
+			this.isWaitingForFirstChunk = true
 			const firstChunk = await iterator.next()
 			yield firstChunk.value
+			this.isWaitingForFirstChunk = false
 		} catch (error) {
-			// note that this api_req_failed ask is unique in that we only present this option if the api hasn't streamed any content yet (ie it fails on the first chunk due), as it would allow them to hit a retry button. However if the api failed mid-stream, it could be in any arbitrary state where some tools may have executed, so that error is handled differently and requires cancelling the task entirely.
-			const { response } = await this.ask("api_req_failed", error.message ?? JSON.stringify(serializeError(error), null, 2))
-			if (response !== "yesButtonClicked") {
-				// this will never happen since if noButtonClicked, we will clear current task, aborting this instance
-				throw new Error("API request failed")
+			const isOpenRouter = this.api instanceof OpenRouterHandler
+			if (isOpenRouter && !this.didAutomaticallyRetryFailedApiRequest) {
+				console.log("first chunk failed, waiting 1 second before retrying")
+				await delay(1000)
+				this.didAutomaticallyRetryFailedApiRequest = true
+			} else {
+				// request failed after retrying automatically once, ask user if they want to retry again
+				// note that this api_req_failed ask is unique in that we only present this option if the api hasn't streamed any content yet (ie it fails on the first chunk due), as it would allow them to hit a retry button. However if the api failed mid-stream, it could be in any arbitrary state where some tools may have executed, so that error is handled differently and requires cancelling the task entirely.
+				const { response } = await this.ask(
+					"api_req_failed",
+					error.message ?? JSON.stringify(serializeError(error), null, 2),
+				)
+				if (response !== "yesButtonClicked") {
+					// this will never happen since if noButtonClicked, we will clear current task, aborting this instance
+					throw new Error("API request failed")
+				}
+				await this.say("api_req_retried")
 			}
-			await this.say("api_req_retried")
 			// delegate generator output from the recursive call
 			yield* this.attemptApiRequest(previousApiReqIndex)
 			return
@@ -1379,6 +1442,8 @@ export class Cline {
 							return `[${block.name} for '${block.params.server_name}']`
 						case "ask_followup_question":
 							return `[${block.name} for '${block.params.question}']`
+						case "plan_mode_response":
+							return `[${block.name}]`
 						case "attempt_completion":
 							return `[${block.name}]`
 					}
@@ -1542,6 +1607,13 @@ export class Cline {
 									diff = fixModelHtmlEscaping(diff)
 									diff = removeInvalidChars(diff)
 								}
+
+								// open the editor if not done already.  This is to fix diff error when model provides correct search-replace text but Cline throws error
+								// because file is not open.
+								if (!this.diffViewProvider.isEditing) {
+									await this.diffViewProvider.open(relPath)
+								}
+
 								try {
 									newContent = await constructNewFileContent(
 										diff,
@@ -2334,7 +2406,12 @@ export class Cline {
 									arguments: mcp_arguments,
 								} satisfies ClineAskUseMcpServer)
 
-								if (this.shouldAutoApproveTool(block.name)) {
+								const isToolAutoApproved = this.providerRef
+									.deref()
+									?.mcpHub?.connections?.find((conn) => conn.server.name === server_name)
+									?.server.tools?.find((tool) => tool.name === tool_name)?.autoApprove
+
+								if (this.shouldAutoApproveTool(block.name) && isToolAutoApproved) {
 									this.removeLastPartialMessageIfExistsWithType("ask", "use_mcp_server")
 									await this.say("use_mcp_server", completeMessage, undefined, false)
 									this.consecutiveAutoApprovedRequestsCount++
@@ -2494,6 +2571,56 @@ export class Cline {
 						} catch (error) {
 							await handleError("asking question", error)
 							await this.saveCheckpoint()
+							break
+						}
+					}
+					case "plan_mode_response": {
+						const response: string | undefined = block.params.response
+						try {
+							if (block.partial) {
+								await this.ask("plan_mode_response", removeClosingTag("response", response), block.partial).catch(
+									() => {},
+								)
+								break
+							} else {
+								if (!response) {
+									this.consecutiveMistakeCount++
+									pushToolResult(await this.sayAndCreateMissingParamError("plan_mode_response", "response"))
+									// await this.saveCheckpoint()
+									break
+								}
+								this.consecutiveMistakeCount = 0
+
+								// if (this.autoApprovalSettings.enabled && this.autoApprovalSettings.enableNotifications) {
+								// 	showSystemNotification({
+								// 		subtitle: "Cline has a response...",
+								// 		message: response.replace(/\n/g, " "),
+								// 	})
+								// }
+
+								this.isAwaitingPlanResponse = true
+								const { text, images } = await this.ask("plan_mode_response", response, false)
+								this.isAwaitingPlanResponse = false
+
+								if (this.didRespondToPlanAskBySwitchingMode) {
+									// await this.say("user_feedback", text ?? "", images)
+									pushToolResult(
+										formatResponse.toolResult(
+											`[The user has switched to ACT MODE, so you may now proceed with the task.]`,
+											images,
+										),
+									)
+								} else {
+									await this.say("user_feedback", text ?? "", images)
+									pushToolResult(formatResponse.toolResult(`<user_message>\n${text}\n</user_message>`, images))
+								}
+
+								// await this.saveCheckpoint()
+								break
+							}
+						} catch (error) {
+							await handleError("responding to inquiry", error)
+							// await this.saveCheckpoint()
 							break
 						}
 					}
@@ -2693,6 +2820,40 @@ export class Cline {
 		}
 	}
 
+	private async handleThinkingPhase(userContent: UserContent): Promise<string> {
+		const thinkingSystemPrompt = `Act as an expert architect engineer and provide direction to your editor engineer.
+Study the change request and the current code.
+Describe how to modify the code to complete the request.
+The editor engineer will rely solely on your instructions, so make them unambiguous and complete.
+Explain all needed code changes clearly and completely, but concisely.
+Just show the changes needed.
+
+DO NOT show the entire updated function/file/etc!
+
+Always reply to the user in English.`
+
+		try {
+			let thinkingResponse = ""
+			const stream = this.thinkingApi.createMessage(thinkingSystemPrompt, [
+				{
+					role: "user",
+					content: userContent,
+				},
+			])
+
+			for await (const chunk of stream) {
+				if (chunk.type === "text") {
+					thinkingResponse += chunk.text
+				}
+			}
+
+			return thinkingResponse
+		} catch (error) {
+			console.error("Thinking phase failed:", error)
+			throw error
+		}
+	}
+
 	async recursivelyMakeClineRequests(
 		userContent: UserContent,
 		includeFileDetails: boolean = false,
@@ -2772,6 +2933,20 @@ export class Cline {
 				this.checkpointTrackerErrorMessage = errorMessage // will be displayed right away since we saveClineMessages next which posts state to webview
 			}
 		}
+
+		// Uncomment this if want the proposed solution in the coding execution agent
+		// try {
+		// 	const thinkingResponse = await this.handleThinkingPhase(userContent)
+		// 	userContent = [
+		// 		...userContent,
+		// 		{
+		// 			type: "text",
+		// 			text: `<proposed_solution>\n${thinkingResponse}\n</proposed_solution>\n\nRefer to the proposed solution provided by an expert architect engineer above to complete the task.`,
+		// 		},
+		// 	]
+		// } catch (error) {
+		// 	console.error("Error in thinking phase:", error)
+		// }
 
 		const [parsedUserContent, environmentDetails] = await this.loadContext(userContent, includeFileDetails)
 		userContent = parsedUserContent
@@ -2866,6 +3041,7 @@ export class Cline {
 			this.didAlreadyUseTool = false
 			this.presentAssistantMessageLocked = false
 			this.presentAssistantMessageHasPendingUpdates = false
+			this.didAutomaticallyRetryFailedApiRequest = false
 			await this.diffViewProvider.reset()
 
 			const stream = this.attemptApiRequest(previousApiReqIndex) // yields only if the first chunk is successful, otherwise will allow the user to retry the request (most likely due to rate limit error, which gets thrown on the first chunk)
@@ -2976,7 +3152,9 @@ export class Cline {
 
 				// if the model did not tool use, then we need to tell it to either use a tool or attempt_completion
 				const didToolUse = this.assistantMessageContent.some((block) => block.type === "tool_use")
+
 				if (!didToolUse) {
+					// normal request where tool use is required
 					this.userMessageContent.push({
 						type: "text",
 						text: formatResponse.noToolsUsed(),
@@ -3022,7 +3200,8 @@ export class Cline {
 						if (
 							block.text.includes("<feedback>") ||
 							block.text.includes("<answer>") ||
-							block.text.includes("<task>")
+							block.text.includes("<task>") ||
+							block.text.includes("<user_message>")
 						) {
 							return {
 								...block,
@@ -3151,6 +3330,22 @@ export class Cline {
 			details += terminalDetails
 		}
 
+		// Add current time information with timezone
+		const now = new Date()
+		const formatter = new Intl.DateTimeFormat(undefined, {
+			year: "numeric",
+			month: "numeric",
+			day: "numeric",
+			hour: "numeric",
+			minute: "numeric",
+			second: "numeric",
+			hour12: true,
+		})
+		const timeZone = formatter.resolvedOptions().timeZone
+		const timeZoneOffset = -now.getTimezoneOffset() / 60 // Convert to hours and invert sign to match conventional notation
+		const timeZoneOffsetStr = `${timeZoneOffset >= 0 ? "+" : ""}${timeZoneOffset}:00`
+		details += `\n\n# Current Time\n${formatter.format(now)} (${timeZone}, UTC${timeZoneOffsetStr})`
+
 		if (includeFileDetails) {
 			details += `\n\n# Current Working Directory (${cwd.toPosix()}) Files\n`
 			const isDesktop = arePathsEqual(cwd, path.join(os.homedir(), "Desktop"))
@@ -3164,6 +3359,17 @@ export class Cline {
 			}
 		}
 
+		details += "\n\n# Current Mode"
+		if (this.chatSettings.mode === "plan") {
+			details += "\nPLAN MODE"
+			details +=
+				"\nIn this mode you should focus on information gathering, asking questions, and architecting a solution. Once you have a plan, use the plan_mode_response tool to engage in a conversational back and forth with the user. Do not use the plan_mode_response tool until you've gathered all the information you need e.g. with read_file or ask_followup_question."
+			details +=
+				'\n(Remember: If it seems the user wants you to use tools only available in Act Mode, you should ask the user to "toggle to Act mode" (use those words) - they will have to manually do this themselves with the Plan/Act toggle button below. You do not have the ability to switch to Act Mode yourself, and must wait for the user to do it themselves once they are satisfied with the plan.)'
+		} else {
+			details += "\nACT MODE"
+		}
+
 		return `<environment_details>\n${details.trim()}\n</environment_details>`
 	}
 
@@ -3174,83 +3380,208 @@ export class Cline {
 	}
 
 	async generatePlan(planText: string): Promise<string> {
-		// Parse the messages array from the JSON string
-		const { messages } = JSON.parse(planText);
-		const userTask = messages[0].text; // This contains the <task> wrapped text
-		const isInitialPlan = messages[0].isInitialPlan;
+		const { messages } = JSON.parse(planText)
+		const userTask = messages[0].text // This contains the <task> wrapped text, TODO: consider adding this in metaprompt instead of in the first message
+		const [parsedText, matched_content] = await parseMentionsForPlan(userTask, cwd, this.urlContentFetcher)
+		const isInitialPlan = messages[0].isInitialPlan
 
 		if (isInitialPlan) {
-			// Define metaprompts for initial plan
-			const metaprompt1 = `Analyze the user input and generate a clear <purpose>, <steps>, and <dependencies> section:
+			// TODO: Add examples for generating plan
+			const metaprompt1 = `
+You are an expert software development consultant tasked with creating structured prompt templates for software feature or component development. Your goal is to analyze a given task description and produce a clear, organized template that will guide the development process.
 
-{input}`;
+Here is the task description you need to analyze:
 
-			const metaprompt2 = `Generate a detailed <implementation_plan> based on the <purpose>, <steps>, and <dependencies> sections:
-{input}`;
+<task_description>
+{{input}}
+</task_description>
+
+Please follow these steps to generate the prompt template:
+
+1. Carefully analyze the task description. Take as much time as you need to fully understand the requirements and objectives. Break down the task, including:
+   a. List of key components of the task
+   b. Main objectives identified
+   c. Specific requirements noted
+   d. Potential challenges or constraints
+Continue your analysis until you're confident you have a comprehensive understanding of the task.
+
+2. Based on your analysis, create a prompt template with the following structure:
+
+   a. Title: A concise summary of the main feature or component being developed (5-10 words).
+   
+   b. High-Level Objective: 1-2 bullet points stating the overarching goal(s) of the task.
+   
+   c. Mid-Level Objectives: A list of more specific objectives or steps, each as a separate bullet point.
+
+3. Format your output using markdown syntax, as shown in the example below.
+
+4. Ensure that your language is clear, concise, and actionable.
+
+Here's an example of the desired output format:
+
+\`\`\`markdown
+# [Concise Title Summarizing the Feature/Component]
+
+## High-Level Objective
+
+- [Overarching goal 1]
+- [Overarching goal 2 (if needed)]
+
+## Mid-Level Objectives
+
+- [Specific objective or step 1]
+- [Specific objective or step 2]
+- [Specific objective or step 3]
+- [Additional objectives or steps as needed]
+\`\`\`
+
+Remember, this is just an example structure. Your actual output should be tailored to the specific task description provided, with appropriate content for each section.
+
+Begin your response with your task breakdown, and then provide the formatted prompt template based on that analysis.`
+
+			// now include @files and @functions that are relevant to the task so model can generate low-level objectives with output from first plan and context from context provided in this plan. Perhaps get model to fill in files and functions to change and add to context.
 
 			// System prompts for each stage
-			const systemPrompt1 = "You are a helpful assistant.";
-			const systemPrompt2 = "You are a helpful assistant.";
+			const systemPrompt1 = "You are a helpful assistant."
 
 			// First API call - Initial Analysis
-			const firstPrompt = metaprompt1.replace('{input}', userTask);
+			const firstPrompt = metaprompt1.replace("{{input}}", parsedText)
+			console.log("firstPrompt", JSON.stringify(firstPrompt, null, 2))
 			const firstMessages: Anthropic.MessageParam[] = [
 				{
 					role: "user" as const,
-					content: firstPrompt
-				}
-			];
+					content: firstPrompt,
+				},
+			]
 
-			const firstStream = this.api.createMessage(systemPrompt1, firstMessages);
-			let firstResult = "";
-			let lastPartialUpdate = 0;
-			const PARTIAL_UPDATE_INTERVAL = 50;
+			const firstStream = this.api.createMessage(systemPrompt1, firstMessages)
+			let firstResult = ""
+			let lastPartialUpdate = 0
+			const PARTIAL_UPDATE_INTERVAL = 50
 
 			for await (const chunk of firstStream) {
 				if (chunk.type === "text") {
-					firstResult += chunk.text;
-					
-					const now = Date.now();
+					firstResult += chunk.text
+
+					const now = Date.now()
 					if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
 						await this.providerRef.deref()?.postMessageToWebview({
 							type: "planResponse",
-							text: "Stage 1/2: Planning\n\n" + firstResult,
-							partial: true
-						});
-						lastPartialUpdate = now;
+							text: "Stage 1/2: Analyzing Task and Gathering Information\n\n" + firstResult,
+							partial: true,
+						})
+						lastPartialUpdate = now
 					}
 				}
 			}
 
+			const systemPrompt2 = "You are a helpful assistant."
+
+			const metaprompt2 = `You are an experienced software architect tasked with creating a detailed, code-focused implementation plan based on high-level and mid-level objectives. Your goal is to break down these objectives into specific, actionable steps that ensure all aspects of the plan are addressed, with a particular focus on generating precise code diffs to accomplish each high-level objective.
+
+First, carefully review the following code context and plan:
+
+<code_context_files>
+{{CODE_CONTEXT_FILES}}
+</code_context_files>
+
+<plan>
+{{PLAN}}
+</plan>
+
+Now, follow these steps to create a detailed low-level implementation plan:
+
+1. Analyze the plan and code context:
+   a. List all files mentioned in the code context.
+   b. List all high-level objectives.
+   c. For each high-level objective, list its corresponding mid-level objectives.
+   d. For each mid-level objective:
+      - Brainstorm potential code-related tasks, focusing on generating precise code diffs. Prioritize simple, direct implementations following Occam's Razor.
+      - Write potential code snippets or pseudo-code to illustrate the implementation.
+      - Identify which files from step (a) are likely to be affected.
+   e. Identify any dependencies between objectives.
+   f. Consider potential challenges or risks for each mid-level objective.
+   g. For each potential challenge or risk, brainstorm possible mitigation strategies.
+
+   It's OK for this section to be quite long, as thorough analysis will lead to a better implementation plan.
+
+2. Create a detailed low-level plan inside <implementation_plan> tags:
+   Based on your analysis, create a detailed plan inside <implementation_plan> tags using the following Markdown format:
+
+\`\`\`markdown
+# Detailed Low-Level Implementation Plan
+
+## High-Level Objective 1: [High-level objective text]
+
+### Mid-Level Objective 1.1: [Mid-level objective text]
+1.1.1. [First detailed code-related step]
+1.1.2. [Second detailed code-related step]
+...
+
+### Mid-Level Objective 1.2: [Mid-level objective text]
+1.2.1. [First detailed code-related step]
+1.2.2. [Second detailed code-related step]
+...
+
+## High-Level Objective 2: [High-level objective text]
+
+### Mid-Level Objective 2.1: [Mid-level objective text]
+2.1.1. [First detailed code-related step]
+2.1.2. [Second detailed code-related step]
+...
+
+[Continue for all high-level and mid-level objectives]
+\`\`\`
+
+Ensure that your detailed low-level plan adheres to the following guidelines:
+- Address all objectives from the original plan.
+- Focus on code-specific tasks and precise instructions for generating code diffs.
+- Use clear, concise language for each step, avoiding ambiguity.
+- Number each step sequentially within each mid-level objective.
+- Organize steps in a logical sequence, considering dependencies between objectives.
+- If any objectives seem vague, make reasonable assumptions based on common software development practices and note them in your plan.
+
+3. Review and finalize:
+   After completing the detailed low-level plan, review it to ensure:
+   - All high-level and mid-level objectives are addressed.
+   - Each step is directly related to code implementation or modification.
+   - The plan follows Occam's Razor, prioritizing simple, direct implementations.
+   - No objectives have been overlooked.
+   - All files identified in step 1(a) have been considered and addressed where relevant.
+
+Present your final detailed low-level implementation plan inside <implementation_plan> tags using the Markdown format specified above.`
+
 			// Second API call - Detailed Planning
-			const secondPrompt = metaprompt2.replace('{input}', firstResult);
+			const secondPrompt = metaprompt2.replace("{{PLAN}}", firstResult)
+			const secondPromptWithContext = secondPrompt.replace("{{CODE_CONTEXT_FILES}}", matched_content.content)
+			console.log("secondPromptWithContext", JSON.stringify(secondPromptWithContext, null, 2))
 			const secondMessages: Anthropic.MessageParam[] = [
 				{
 					role: "assistant" as const,
-					content: firstResult
+					content: firstResult,
 				},
 				{
 					role: "user" as const,
-					content: secondPrompt
-				}
-			];
+					content: secondPromptWithContext,
+				},
+			]
 
-			const secondStream = this.api.createMessage(systemPrompt2, secondMessages);
-			let finalResult = "";
-			lastPartialUpdate = 0;
+			const secondStream = this.api.createMessage(systemPrompt2, secondMessages)
+			let finalResult = ""
+			lastPartialUpdate = 0
 
 			for await (const chunk of secondStream) {
 				if (chunk.type === "text") {
-					finalResult += chunk.text;
-					
-					const now = Date.now();
+					finalResult += chunk.text
+
+					const now = Date.now()
 					if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
 						await this.providerRef.deref()?.postMessageToWebview({
 							type: "planResponse",
-							text: "Stage 2/2: Plan Complete\n\n" + finalResult,
-							partial: true
-						});
-						lastPartialUpdate = now;
+							text: "Stage 2/2: Implementation Planning\n\n" + finalResult,
+							partial: true,
+						})
+						lastPartialUpdate = now
 					}
 				}
 			}
@@ -3259,42 +3590,84 @@ export class Cline {
 			await this.providerRef.deref()?.postMessageToWebview({
 				type: "planResponse",
 				text: finalResult,
-				partial: false
-			});
+				partial: false,
+			})
 
-			return finalResult;
+			return finalResult
 		} else {
 			// For subsequent messages, use a single prompt
-			const continuationPrompt = `Iterate on the plan based on the user feedback:
-{input}`;
+			const continuationPrompt = `You are an AI assistant specializing in project plan refinement. Your task is to analyze an original project plan and user feedback, then provide a revised plan that incorporates the necessary changes.
 
-			const systemPrompt = "You are a helpful assistant.";
+Here is the conversation history containing the original task and user feedback:
+<conversation_history>
+{{CONVERSATION_HISTORY}}
+</conversation_history>
 
-			const prompt = continuationPrompt.replace('{input}', userTask);
+Please follow these steps to revise the plan:
+
+1. Analyze the user's feedback in the conversation history carefully. Consider how it changes the scope, requirements, or direction of the original task.
+
+2. Identify the modifications needed to accommodate this feedback.
+
+3. Revise the plan to incorporate the user's feedback. Ensure you:
+   - Address all aspects of the user's feedback
+   - Modify existing steps as necessary
+   - Add new steps if required
+   - Remove any steps that are no longer relevant
+
+4. Present your revised plan in Markdown format, retaining the original format of the input.
+
+Before presenting your final revised plan, take as much time as you need to thoroughly analyze the user's feedback. In this analysis:
+
+1. Break down the user feedback into key points.
+2. For each key point, identify its implications for the project plan.
+3. Compare the original task with the user feedback, highlighting any discrepancies or new requirements.
+4. List potential modifications needed for each step of the original plan.
+5. Consider any potential challenges or conflicts that might arise from implementing the feedback.
+
+This analysis will help ensure a thorough interpretation of the feedback and its implications for the project plan.
+
+After your analysis, present your revised plan inside <revised_plan> tags using the following format:
+
+\`\`\`markdown
+## Revised Plan
+
+1. [First step]
+2. [Second step]
+3. [Third step]
+...
+\`\`\`
+
+Remember to be thorough in your revision. Your goal is to provide an updated plan that fully incorporates the user's feedback while maintaining the overall objective of the task.`
+
+			const systemPrompt = "You are a helpful assistant."
+
+			const iterationPrompt = continuationPrompt.replace("{{CONVERSATION_HISTORY}}", userTask)
+			console.log("iterationPrompt", iterationPrompt)
 			const messages: Anthropic.MessageParam[] = [
 				{
 					role: "user" as const,
-					content: prompt
-				}
-			];
+					content: iterationPrompt,
+				},
+			]
 
-			const stream = this.api.createMessage(systemPrompt, messages);
-			let result = "";
-			let lastPartialUpdate = 0;
-			const PARTIAL_UPDATE_INTERVAL = 50;
+			const stream = this.api.createMessage(systemPrompt, messages)
+			let result = ""
+			let lastPartialUpdate = 0
+			const PARTIAL_UPDATE_INTERVAL = 50
 
 			for await (const chunk of stream) {
 				if (chunk.type === "text") {
-					result += chunk.text;
-					
-					const now = Date.now();
+					result += chunk.text
+
+					const now = Date.now()
 					if (now - lastPartialUpdate >= PARTIAL_UPDATE_INTERVAL) {
 						await this.providerRef.deref()?.postMessageToWebview({
 							type: "planResponse",
 							text: result,
-							partial: true
-						});
-						lastPartialUpdate = now;
+							partial: true,
+						})
+						lastPartialUpdate = now
 					}
 				}
 			}
@@ -3303,10 +3676,10 @@ export class Cline {
 			await this.providerRef.deref()?.postMessageToWebview({
 				type: "planResponse",
 				text: result,
-				partial: false
-			});
+				partial: false,
+			})
 
-			return result;
+			return result
 		}
 	}
 }

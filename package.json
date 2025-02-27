@@ -2,7 +2,7 @@
 	"name": "cline-max",
 	"displayName": "Cline Max",
 	"description": "An extension optimized for the planner-coder workflow based on a fork of Cline, an autonomous coding agent. Join our Discord for support and updates: https://discord.gg/wxRFCBJWKF",
-	"version": "1.3.0",
+	"version": "1.3.1",
 	"icon": "assets/icons/comp.png",
 	"galleryBanner": {
 		"color": "#617A91",
